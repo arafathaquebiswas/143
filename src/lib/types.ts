@@ -15,6 +15,19 @@ export type PhotoRow = {
   updated_at: string;
 };
 
+/** One comment on a photo. */
+export type PhotoComment = {
+  id: string;
+  photo_id: string;
+  author_id: string;
+  /** Display name of whoever wrote it. */
+  authorName: string;
+  body: string;
+  created_at: string;
+  /** Whether the person viewing wrote it — only they may edit or remove it. */
+  isMine: boolean;
+};
+
 /** A photo enriched with everything the UI needs to render it. */
 export type Photo = PhotoRow & {
   uploaderName: string;
@@ -26,6 +39,8 @@ export type Photo = PhotoRow & {
   favoritedBy: string[];
   /** Whether the person currently looking at the page hearted it. */
   isFavorite: boolean;
+  /** Comments on this photo, oldest first. */
+  comments: PhotoComment[];
 };
 
 export type Person = {

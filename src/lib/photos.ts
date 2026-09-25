@@ -2,7 +2,7 @@ import 'server-only';
 
 import { BUCKET, PAGE_SIZE, SIGNED_URL_TTL } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
-import type { AppSettings, Person, Photo, PhotoFilter, PhotoRow } from '@/lib/types';
+import type { AppSettings, Person, Photo, PhotoComment, PhotoFilter, PhotoRow } from '@/lib/types';
 
 const DEFAULT_SETTINGS: AppSettings = {
   relationship_start_date: '2024-01-01',
@@ -119,6 +119,13 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
   const { data: roster } = await supabase.from('allowed_users').select('user_id, display_name');
   const nameOf = new Map((roster ?? []).map((p) => [p.user_id, p.display_name]));
 
+  // Comments for just these photos, oldest first.
+  const { data: commentRows } = await supabase
+    .from('comments')
+    .select('id, photo_id, author_id, body, created_at')
+    .in('photo_id', rows.map((r) => r.id))
+    .order('created_at');
+
   // One batched signing call for every thumbnail and full-size image.
   const paths = rows.flatMap((r) => [r.thumb_path, r.storage_path]);
   const signed = await signPaths(paths);
@@ -133,6 +140,17 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
       url: signed.get(row.storage_path) ?? '',
       favoritedBy: hearts.map((h) => nameOf.get(h.user_id) ?? 'Someone'),
       isFavorite: hearts.some((h) => h.user_id === user.id),
+      comments: (commentRows ?? [])
+        .filter((c) => c.photo_id === row.id)
+        .map<PhotoComment>((c) => ({
+          id: c.id,
+          photo_id: c.photo_id,
+          author_id: c.author_id,
+          authorName: nameOf.get(c.author_id) ?? 'Someone',
+          body: c.body,
+          created_at: c.created_at,
+          isMine: c.author_id === user.id,
+        })),
     } satisfies Photo;
   });
 }

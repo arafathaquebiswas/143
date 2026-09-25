@@ -14,7 +14,7 @@ import {
   updatePhotoAction,
 } from '@/lib/actions';
 import { PAGE_SIZE } from '@/lib/constants';
-import type { Photo, PhotoFilter } from '@/lib/types';
+import type { Photo, PhotoComment, PhotoFilter } from '@/lib/types';
 import { formatDayHeading, formatMonthHeading } from '@/lib/utils';
 
 type Layout = 'grid' | 'masonry' | 'timeline' | 'rail';
@@ -119,6 +119,11 @@ export default function PhotoBrowser({
       ),
     );
     router.refresh();
+  };
+
+  /** Comments changed inside the viewer — keep them after it closes. */
+  const applyComments = (photo: Photo, comments: PhotoComment[]) => {
+    setItems((current) => current.map((p) => (p.id === photo.id ? { ...p, comments } : p)));
   };
 
   const fetchMore = () => {
@@ -242,6 +247,7 @@ export default function PhotoBrowser({
 
       {openIndex !== null && items[openIndex] && (
         <Lightbox
+          onCommentsChanged={applyComments}
           photos={items}
           index={openIndex}
           onIndexChange={setOpenIndex}

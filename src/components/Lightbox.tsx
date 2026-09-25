@@ -11,8 +11,9 @@ import {
   StarIcon,
   TrashIcon,
 } from '@/components/icons';
+import PhotoComments from '@/components/PhotoComments';
 import PhotoEditor from '@/components/PhotoEditor';
-import type { Photo } from '@/lib/types';
+import type { Photo, PhotoComment } from '@/lib/types';
 import { cn, formatMemoryDate, formatTimestamp } from '@/lib/utils';
 
 export type LightboxProps = {
@@ -25,6 +26,7 @@ export type LightboxProps = {
   onDetailsEdited: (photo: Photo, patch: { caption: string; memory_date: string }) => void;
   onDelete: (photo: Photo) => Promise<void>;
   onImageEdited: (photo: Photo, size: { width: number; height: number; size_bytes: number }) => void;
+  onCommentsChanged: (photo: Photo, comments: PhotoComment[]) => void;
 };
 
 export default function Lightbox({
@@ -37,6 +39,7 @@ export default function Lightbox({
   onDetailsEdited,
   onDelete,
   onImageEdited,
+  onCommentsChanged,
 }: LightboxProps) {
   const photo = photos[index];
 
@@ -222,6 +225,12 @@ export default function Lightbox({
                 )}
               </div>
           </div>
+
+          <PhotoComments
+            photoId={photo.id}
+            comments={photo.comments ?? []}
+            onChange={(next) => onCommentsChanged(photo, next)}
+          />
         </div>
       </div>
 

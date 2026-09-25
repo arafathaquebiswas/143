@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { BUCKET } from '@/lib/constants';
 import { getPhotos } from '@/lib/photos';
-import type { Photo, PhotoFilter } from '@/lib/types';
+import type { Photo, PhotoComment, PhotoFilter } from '@/lib/types';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -236,6 +236,104 @@ export async function toggleFavoriteAction(
       : await supabase.from('favorites').delete().eq('photo_id', id).eq('user_id', user.id);
 
     if (error) return { ok: false, error: error.message };
+
+    revalidateAll();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------
+
+/**
+ * Posts a comment as the signed-in person. The database also enforces
+ * author_id = auth.uid(), so a comment can never be attributed to the other
+ * person even if this code were wrong.
+ */
+export async function addCommentAction(
+  photoId: string,
+  body: string,
+): Promise<ActionResult & { comment?: PhotoComment }> {
+  try {
+    const { supabase, user } = await requireViewer();
+
+    const text = body.trim();
+    if (!text) return { ok: false, error: 'Write something first.' };
+    if (text.length > 2000) return { ok: false, error: 'That is too long — keep it under 2000 characters.' };
+
+    const { data, error } = await supabase
+      .from('comments')
+      .insert({ photo_id: photoId, author_id: user.id, body: text })
+      .select('id, photo_id, author_id, body, created_at')
+      .single();
+
+    if (error) return { ok: false, error: error.message };
+
+    const { data: me } = await supabase
+      .from('allowed_users')
+      .select('display_name')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    revalidateAll();
+    return {
+      ok: true,
+      comment: {
+        id: data.id,
+        photo_id: data.photo_id,
+        author_id: data.author_id,
+        authorName: me?.display_name ?? 'Someone',
+        body: data.body,
+        created_at: data.created_at,
+        isMine: true,
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** Edits your own comment. The RLS policy rejects anyone else's. */
+export async function editCommentAction(id: string, body: string): Promise<ActionResult> {
+  try {
+    const { supabase } = await requireViewer();
+
+    const text = body.trim();
+    if (!text) return { ok: false, error: 'Write something first.' };
+    if (text.length > 2000) return { ok: false, error: 'That is too long — keep it under 2000 characters.' };
+
+    const { data, error } = await supabase
+      .from('comments')
+      .update({ body: text })
+      .eq('id', id)
+      .select('id');
+
+    if (error) return { ok: false, error: error.message };
+    if (!data || data.length === 0) return { ok: false, error: 'You can only edit your own comments.' };
+
+    revalidateAll();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** Removes your own comment. Neither of you can delete the other's words. */
+export async function deleteCommentAction(id: string): Promise<ActionResult> {
+  try {
+    const { supabase } = await requireViewer();
+
+    const { data, error } = await supabase
+      .from('comments')
+      .delete()
+      .eq('id', id)
+      .select('id');
+
+    if (error) return { ok: false, error: error.message };
+    if (!data || data.length === 0) return { ok: false, error: 'You can only remove your own comments.' };
 
     revalidateAll();
     return { ok: true };

@@ -181,6 +181,60 @@ console.log(bold('\n6. EDIT, FAVORITE, SPECIAL — as owner B on owner A\'s phot
   check((stillThere ?? []).length === 1, 'owner A CANNOT remove owner B\'s heart', stealErr?.message ?? 'row untouched');
 }
 
+console.log(bold('\n6b. COMMENTS\n'));
+{
+  const target = uploaded[0].rowId;
+
+  const { data: mine, error: e1 } = await A.client
+    .from('comments').insert({ photo_id: target, author_id: A.user.id, body: 'A note from owner A' })
+    .select('id, body').single();
+  check(!e1, 'owner A can post a comment', e1?.message);
+
+  if (e1 || !mine) {
+    fail('comments table is reachable', 'run supabase/add-comments.sql in the SQL Editor');
+    console.log(red('       skipping the rest of the comment checks\n'));
+  } else {
+
+  const { data: theirs, error: e2 } = await B.client
+    .from('comments').insert({ photo_id: target, author_id: B.user.id, body: 'A reply from owner B' })
+    .select('id, body').single();
+  check(!e2, 'owner B can post a comment', e2?.message);
+
+  const { data: seenByA } = await A.client.from('comments').select('id, body').eq('photo_id', target).order('created_at');
+  check((seenByA ?? []).length === 2, 'both comments are visible to both of them', `${seenByA?.length} visible`);
+
+  const { error: editErr } = await A.client.from('comments').update({ body: 'edited by A' }).eq('id', mine.id);
+  check(!editErr, 'owner A can edit their own comment', editErr?.message);
+
+  const { data: hijack } = await A.client
+    .from('comments').update({ body: 'A tampering with B' }).eq('id', theirs.id).select('id');
+  const { data: bStill } = await B.client.from('comments').select('body').eq('id', theirs.id).single();
+  check((hijack ?? []).length === 0 && bStill?.body === 'A reply from owner B',
+    'owner A CANNOT edit owner B\'s comment', 'row untouched');
+
+  const { data: steal } = await A.client.from('comments').delete().eq('id', theirs.id).select('id');
+  const { data: bAlive } = await B.client.from('comments').select('id').eq('id', theirs.id);
+  check((steal ?? []).length === 0 && (bAlive ?? []).length === 1,
+    'owner A CANNOT delete owner B\'s comment', 'row untouched');
+
+  const { data: ownDel } = await A.client.from('comments').delete().eq('id', mine.id).select('id');
+  check((ownDel ?? []).length === 1, 'owner A can delete their own comment');
+
+  const anonClient = anon();
+  const { data: anonRead } = await anonClient.from('comments').select('id').limit(1);
+  check((anonRead ?? []).length === 0, 'a signed-out visitor reads 0 comments');
+  const { error: anonWrite } = await anonClient
+    .from('comments').insert({ photo_id: target, author_id: A.user.id, body: 'intruder' });
+  check(!!anonWrite, 'a signed-out visitor cannot post', anonWrite?.code);
+
+  const { error: emptyErr } = await A.client
+    .from('comments').insert({ photo_id: target, author_id: A.user.id, body: '   ' });
+  check(!!emptyErr, 'a blank comment is rejected by the database', emptyErr?.code);
+
+    await admin.from('comments').delete().eq('photo_id', target);
+  }
+}
+
 console.log(bold('\n7. DOWNLOAD\n'));
 {
   const { data: dl } = await A.client.storage.from('memories').createSignedUrl(uploaded[0].full, 60, { download: 'memory.jpg' });
