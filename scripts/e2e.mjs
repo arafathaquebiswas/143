@@ -31,6 +31,13 @@ for (const block of (await readFile('ACCOUNTS.local.txt', 'utf8')).split('\n\n')
 
 const [emailA, emailB] = Object.keys(creds);
 
+// The album is no longer empty in real use, so the suite must leave the real
+// data exactly as it found it.
+const { data: settingsBefore } = await admin.from('app_settings').select('key, value');
+const { count: photosBefore } = await admin
+  .from('photos')
+  .select('id', { count: 'exact', head: true });
+
 async function signIn(email) {
   const client = anon();
   const { data, error } = await client.auth.signInWithPassword({ email, password: creds[email].password });
@@ -111,8 +118,10 @@ console.log(bold('\n4. VIEWING AND SIGNED URLS\n'));
 {
   const { data: photos, error: listError } = await A.client.from('photos').select('*, uploader:allowed_users!photos_uploader_id_fkey(display_name)').order('memory_date', { ascending: false });
   check(!listError, 'the gallery query runs without error', listError?.code ?? listError?.message);
-  check((photos ?? []).length === 3, 'owner A sees all 3 photos', `${photos?.length ?? 0} returned`);
-  check(photos?.[0]?.uploader?.display_name === creds[emailA].name, 'uploader name resolves', photos?.[0]?.uploader?.display_name);
+  const testIds = new Set(uploaded.map((u) => u.rowId));
+  const seenTest = (photos ?? []).filter((p) => testIds.has(p.id));
+  check(seenTest.length === 3, 'owner A sees all 3 test photos', `${seenTest.length}/3 among ${photos?.length ?? 0} total`);
+  check(seenTest[0]?.uploader?.display_name === creds[emailA].name, 'uploader name resolves', seenTest[0]?.uploader?.display_name);
 
   const { data: signed } = await A.client.storage.from('memories').createSignedUrls(uploaded.map((u) => u.full), 7200);
   const url = signed?.[0]?.signedUrl;
@@ -222,10 +231,17 @@ console.log(bold('\nCLEANUP\n'));
   await admin.storage.from('memories').remove(paths);
   const ids = uploaded.map((u) => u.rowId).filter(Boolean);
   if (ids.length) await admin.from('photos').delete().in('id', ids);
-  await admin.from('app_settings').upsert([{ key: 'relationship_start_date', value: '2024-01-01' }], { onConflict: 'key' });
+  await admin.from('app_settings').upsert(settingsBefore, { onConflict: 'key' });
+
+  const { data: settingsAfter } = await admin.from('app_settings').select('key, value');
+  const settingsIntact = (settingsBefore ?? []).every(
+    (b) => (settingsAfter ?? []).find((a) => a.key === b.key)?.value === b.value,
+  );
+  check(settingsIntact, 'your real settings were restored untouched',
+    settingsAfter?.find((r) => r.key === 'relationship_start_date')?.value);
 
   const { count } = await admin.from('photos').select('id', { count: 'exact', head: true });
-  check(count === 0, 'all test data removed — album is empty and ready', `${count} photos remain`);
+  check(count === photosBefore, 'every test photo removed, real photos untouched', `${count} photos (started with ${photosBefore})`);
 }
 
 const failed = results.filter(([ok]) => !ok);
