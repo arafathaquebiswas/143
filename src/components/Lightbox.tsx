@@ -238,7 +238,7 @@ export default function Lightbox({
                   rows={2}
                   maxLength={500}
                   placeholder="What was happening here?"
-                  className="w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:border-white/40 focus:outline-none"
+                  className="w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3.5 py-2.5 text-base text-white placeholder:text-white/35 focus:border-white/40 focus:outline-none sm:text-sm"
                 />
               </label>
               <div className="flex flex-wrap items-end gap-3">
@@ -250,7 +250,7 @@ export default function Lightbox({
                     type="date"
                     value={memoryDate}
                     onChange={(e) => setMemoryDate(e.target.value)}
-                    className="rounded-xl border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white [color-scheme:dark] focus:border-white/40 focus:outline-none"
+                    className="rounded-xl border border-white/15 bg-white/10 px-3.5 py-2 text-base text-white [color-scheme:dark] focus:border-white/40 focus:outline-none sm:text-sm"
                   />
                 </label>
                 <div className="ml-auto flex gap-2">

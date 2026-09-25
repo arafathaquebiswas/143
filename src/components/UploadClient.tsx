@@ -254,7 +254,7 @@ export default function UploadClient({ userId }: { userId: string }) {
                   value={memoryDate}
                   disabled={useFileDates}
                   onChange={(e) => setMemoryDate(e.target.value)}
-                  className="w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 text-sm disabled:opacity-50"
+                  className="w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 text-base sm:text-sm disabled:opacity-50"
                 />
                 <label className="mt-2 flex items-center gap-2 text-xs text-muted">
                   <input
@@ -277,7 +277,7 @@ export default function UploadClient({ userId }: { userId: string }) {
                   maxLength={500}
                   onChange={(e) => setSharedCaption(e.target.value)}
                   placeholder="Our first trip together"
-                  className="w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 text-sm placeholder:text-muted/70"
+                  className="w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 text-base sm:text-sm placeholder:text-muted/70"
                 />
                 <span className="mt-2 block text-xs text-muted">
                   You can give any photo its own caption below.
@@ -326,7 +326,7 @@ export default function UploadClient({ userId }: { userId: string }) {
                     disabled={busy}
                     onChange={(e) => patch(item.key, { caption: e.target.value })}
                     placeholder={sharedCaption || 'Add a caption (optional)'}
-                    className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm placeholder:text-muted/70 disabled:opacity-60"
+                    className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-base sm:text-sm placeholder:text-muted/70 disabled:opacity-60"
                   />
 
                   {item.status === 'working' && (

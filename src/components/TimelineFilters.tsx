@@ -29,8 +29,10 @@ export default function TimelineFilters({ years }: { years: number[] }) {
     });
   };
 
+  // text-base on phones, not text-sm: iOS Safari force-zooms the page when a
+  // focused control is under 16px and never zooms back out.
   const selectClass =
-    'rounded-full border border-line bg-surface px-4 py-2.5 text-sm transition focus:border-accent focus:outline-none disabled:opacity-60';
+    'rounded-full border border-line bg-surface px-4 py-2.5 text-base transition focus:border-accent focus:outline-none disabled:opacity-60 sm:text-sm';
 
   return (
     <div className="flex flex-wrap items-center gap-2">
