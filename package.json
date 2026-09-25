@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "connect": "node scripts/connect-supabase.mjs",
     "doctor": "node scripts/doctor.mjs",
     "add-user": "node scripts/add-user.mjs",
     "backup": "node scripts/backup.mjs"
