@@ -1,0 +1,25 @@
+import { redirect } from 'next/navigation';
+
+import Nav from '@/components/Nav';
+import { getSettings, getViewer } from '@/lib/photos';
+
+/**
+ * The gate for every signed-in page. The middleware already turned away
+ * anyone without a session; this makes sure the account is on the allow list
+ * too, before a single photo is fetched.
+ */
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const viewer = await getViewer();
+  if (!viewer) redirect('/login');
+
+  const settings = await getSettings();
+
+  return (
+    <div className="min-h-dvh">
+      <Nav title={settings.home_title} name={viewer.displayName} />
+      <main className="mx-auto w-full max-w-6xl px-4 pb-28 pt-6 sm:px-6 sm:pt-10 md:pb-16">
+        {children}
+      </main>
+    </div>
+  );
+}
