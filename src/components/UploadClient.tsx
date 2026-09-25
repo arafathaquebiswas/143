@@ -4,6 +4,7 @@ import imageCompression from 'browser-image-compression';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
+import CameraCapture from '@/components/CameraCapture';
 import { CameraIcon, CheckIcon, CloseIcon, StarIcon, UploadIcon } from '@/components/icons';
 import { createPhotosAction, type NewPhotoInput } from '@/lib/actions';
 import {
@@ -32,6 +33,10 @@ type Item = {
 export default function UploadClient({ userId }: { userId: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  /** Native camera picker — the fallback where live capture is unavailable. */
+  const nativeCameraRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraSupported, setCameraSupported] = useState(false);
 
   const [items, setItems] = useState<Item[]>([]);
   const [memoryDate, setMemoryDate] = useState(todayISO());
@@ -41,6 +46,15 @@ export default function UploadClient({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+
+  // Live capture needs getUserMedia in a secure context. Detected after mount
+  // so the server and the first client render agree.
+  useEffect(() => {
+    setCameraSupported(
+      !!navigator.mediaDevices?.getUserMedia &&
+        (window.isSecureContext || location.hostname === 'localhost'),
+    );
+  }, []);
 
   // Object URLs are a finite resource; release them when the list changes.
   useEffect(
@@ -186,6 +200,17 @@ export default function UploadClient({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-6">
+      {cameraOpen && (
+        <CameraCapture
+          onCancel={() => setCameraOpen(false)}
+          onUse={(file) => {
+            // Exactly the same path as a gallery photo: compression, thumbnail,
+            // private Storage upload, database row, RLS. Nothing is duplicated.
+            addFiles([file]);
+            setCameraOpen(false);
+          }}
+        />
+      )}
       {/* Drop zone */}
       <div
         onDragOver={(e) => {
@@ -208,24 +233,58 @@ export default function UploadClient({ userId }: { userId: string }) {
         <span className="animate-breathe mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-accent/15 to-clay/10 text-accent ring-1 ring-accent/15">
           <CameraIcon width={26} height={26} />
         </span>
-        <h2 className="display text-2xl">Choose your photos</h2>
-        <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted">
-          Pick as many photos as you like. They are resized on your phone first, so uploads stay
-          quick even on a slow connection.
+        <h2 className="display text-2xl">Add a memory</h2>
+
+        <div className="mx-auto mt-6 flex max-w-md flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => (cameraSupported ? setCameraOpen(true) : nativeCameraRef.current?.click())}
+            className="sheen min-h-14 flex-1 rounded-2xl border border-line bg-surface/70 px-5 py-4 text-sm font-semibold backdrop-blur-xl transition-all duration-300 hover:border-accent/50 hover:text-accent active:scale-95"
+          >
+            <span className="inline-flex items-center justify-center gap-2.5">
+              <CameraIcon width={18} height={18} />
+              Take Photo
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="sheen min-h-14 flex-1 rounded-2xl bg-gradient-to-br from-accent to-clay px-5 py-4 text-sm font-semibold text-white shadow-glow transition-all duration-300 hover:shadow-float active:scale-95"
+          >
+            <span className="inline-flex items-center justify-center gap-2.5">
+              <UploadIcon width={18} height={18} />
+              Choose Photos
+            </span>
+          </button>
+        </div>
+
+        <p className="mx-auto mt-4 max-w-sm text-sm text-muted">
+          Take one now or choose from your gallery
         </p>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="sheen mt-6 inline-flex items-center gap-2.5 rounded-full bg-gradient-to-br from-accent to-clay px-7 py-3.5 text-sm font-semibold text-white shadow-glow transition-all duration-300 hover:shadow-float active:scale-95"
-        >
-          <UploadIcon width={17} height={17} />
-          Choose photos
-        </button>
+        <p className="mx-auto mt-1.5 max-w-sm text-xs text-muted/70">
+          Photos are resized on your phone first, so uploads stay quick even on a slow connection.
+        </p>
+
+        {/* Gallery / Files — unchanged: still multi-select, still drag-and-drop */}
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
           multiple
+          hidden
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
+
+        {/* Fallback for browsers without live capture: the device camera app */}
+        <input
+          ref={nativeCameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
           hidden
           onChange={(e) => {
             addFiles(e.target.files);
