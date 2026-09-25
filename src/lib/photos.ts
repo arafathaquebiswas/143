@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { cache } from 'react';
+
 import { BUCKET, PAGE_SIZE, SIGNED_URL_TTL } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
 import type { AppSettings, Person, Photo, PhotoComment, PhotoFilter, PhotoRow } from '@/lib/types';
@@ -11,7 +13,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 /** The logged-in person, plus the other half of the album. */
-export async function getViewer() {
+export const getViewer = cache(async function getViewer() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -36,9 +38,9 @@ export async function getViewer() {
     people,
     partner: people.find((p) => p.user_id !== user.id) ?? null,
   };
-}
+});
 
-export async function getSettings(): Promise<AppSettings> {
+export const getSettings = cache(async function getSettings(): Promise<AppSettings> {
   const supabase = await createClient();
   const { data } = await supabase.from('app_settings').select('key, value');
 
@@ -49,7 +51,30 @@ export async function getSettings(): Promise<AppSettings> {
     }
   }
   return settings;
-}
+});
+
+/** Exactly the columns the UI uses — "*" also drags along anything added later. */
+const PHOTO_COLUMNS =
+  'id, uploader_id, storage_path, thumb_path, caption, memory_date, is_special, ' +
+  'width, height, size_bytes, original_name, created_at, updated_at, ' +
+  'collection, recreated_photo_id, recreated_at, ' +
+  'uploader:allowed_users!photos_uploader_id_fkey(display_name)';
+
+/** auth.getUser() costs a round trip to Supabase; do it once per request. */
+const currentUser = cache(async () => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+});
+
+/** The two display names, once per request. */
+const nameMap = cache(async () => {
+  const supabase = await createClient();
+  const { data } = await supabase.from('allowed_users').select('user_id, display_name');
+  return new Map((data ?? []).map((p) => [p.user_id, p.display_name]));
+});
 
 type PhotoQueryRow = PhotoRow & { uploader: { display_name: string } | null };
 
@@ -59,9 +84,7 @@ type PhotoQueryRow = PhotoRow & { uploader: { display_name: string } | null };
  */
 export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
 
   const {
@@ -76,17 +99,21 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
     offset = 0,
   } = filter;
 
-  // Favorites are needed both as a filter and as display state, so fetch the
-  // (small) full set up front.
-  const { data: favRows } = await supabase.from('favorites').select('photo_id, user_id');
-  const favorites = favRows ?? [];
+  // Only the favourites-only view needs every row. Everywhere else we fetch
+  // hearts scoped to the photos actually being returned, further down, so this
+  // query does not grow with the size of the album.
+  let favorites: { photo_id: string; user_id: string }[] = [];
+  if (favoritesOnly) {
+    const { data } = await supabase.from('favorites').select('photo_id, user_id');
+    favorites = data ?? [];
+  }
 
   // The foreign key is named explicitly: photos and allowed_users are related
   // twice (uploader_id, and again through favorites), so PostgREST needs to be
   // told which path to follow or it refuses the embed with PGRST201.
   let query = supabase
     .from('photos')
-    .select('*, uploader:allowed_users!photos_uploader_id_fkey(display_name)')
+    .select(PHOTO_COLUMNS)
     .range(offset, offset + limit - 1);
 
   query =
@@ -128,7 +155,7 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
 
     let retry = supabase
       .from('photos')
-      .select('*, uploader:allowed_users!photos_uploader_id_fkey(display_name)')
+      .select(PHOTO_COLUMNS)
       .range(offset, offset + limit - 1);
 
     retry =
@@ -153,28 +180,36 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
 
   if (error) throw new Error(`Could not load photos: ${error.message}`);
 
-  const rows = (data ?? []) as PhotoQueryRow[];
+  const rows = (data ?? []) as unknown as PhotoQueryRow[];
   if (rows.length === 0) return [];
 
-  const { data: roster } = await supabase.from('allowed_users').select('user_id, display_name');
-  const nameOf = new Map((roster ?? []).map((p) => [p.user_id, p.display_name]));
-
-  // Comments for just these photos, oldest first.
-  const { data: commentRows } = await supabase
-    .from('comments')
-    .select('id, photo_id, author_id, body, created_at')
-    .in('photo_id', rows.map((r) => r.id))
-    .order('created_at');
-
-  // For recreated inspirations, fetch the memory each one became so the
-  // viewer can show inspiration -> our recreation side by side.
+  const pageIds = rows.map((r) => r.id);
   const partnerIds = rows.map((r) => r.recreated_photo_id).filter(Boolean) as string[];
-  const { data: partnerRows } = partnerIds.length
-    ? await supabase
-        .from('photos')
-        .select('id, storage_path, thumb_path, caption, memory_date')
-        .in('id', partnerIds)
-    : { data: [] as { id: string; storage_path: string; thumb_path: string; caption: string | null; memory_date: string }[] };
+
+  // Supabase sits a long way from the server, so every round trip costs real
+  // time. These four are independent — run them together rather than one
+  // after another.
+  const [nameOf, favResult, commentResult, partnerResult] = await Promise.all([
+    nameMap(),
+    favoritesOnly
+      ? Promise.resolve({ data: favorites })
+      : supabase.from('favorites').select('photo_id, user_id').in('photo_id', pageIds),
+    supabase
+      .from('comments')
+      .select('id, photo_id, author_id, body, created_at')
+      .in('photo_id', pageIds)
+      .order('created_at'),
+    partnerIds.length
+      ? supabase
+          .from('photos')
+          .select('id, storage_path, thumb_path, caption, memory_date')
+          .in('id', partnerIds)
+      : Promise.resolve({ data: [] as { id: string; storage_path: string; thumb_path: string; caption: string | null; memory_date: string }[] }),
+  ]);
+
+  if (!favoritesOnly) favorites = favResult.data ?? [];
+  const commentRows = commentResult.data;
+  const partnerRows = partnerResult.data;
 
   // One batched signing call for every thumbnail and full-size image.
   const paths = rows.flatMap((r) => [r.thumb_path, r.storage_path]);
@@ -274,24 +309,69 @@ export async function getYearsWithMemories(): Promise<number[]> {
   return [...years].sort((a, b) => b - a);
 }
 
+/**
+ * Signed URLs, reused while they are still valid.
+ *
+ * Signing is the single most expensive thing these pages do — measured at
+ * 663 ms for 36 paths, and the home page was paying it five times over. A
+ * signature depends only on the path and the expiry, never on who is asking,
+ * so the same URL can safely be handed to either owner. Both are authorised,
+ * and the link is still private and still expires.
+ *
+ * Entries are dropped well before the URL itself expires, so a cached link
+ * always has plenty of life left in it.
+ */
+const SIGN_CACHE = new Map<string, { url: string; expiresAt: number }>();
+
+/** Reuse a signed URL only while at least this long remains on it. */
+const SIGN_CACHE_SAFETY_MS = 15 * 60 * 1000;
+
+function pruneSignCache(now: number) {
+  if (SIGN_CACHE.size < 4000) return;
+  for (const [path, entry] of SIGN_CACHE) {
+    if (entry.expiresAt <= now) SIGN_CACHE.delete(path);
+  }
+}
+
 /** Signs a batch of storage paths, returning path -> temporary URL. */
 async function signPaths(paths: string[]): Promise<Map<string, string>> {
   const unique = [...new Set(paths)].filter(Boolean);
   const result = new Map<string, string>();
   if (unique.length === 0) return result;
 
+  const now = Date.now();
+  pruneSignCache(now);
+
+  const missing: string[] = [];
+  for (const path of unique) {
+    const hit = SIGN_CACHE.get(path);
+    if (hit && hit.expiresAt - now > SIGN_CACHE_SAFETY_MS) result.set(path, hit.url);
+    else missing.push(path);
+  }
+
+  if (missing.length === 0) return result;
+
   const supabase = await createClient();
+  const expiresAt = now + SIGNED_URL_TTL * 1000;
 
   // Sign in chunks so a very large album never sends one enormous request.
   const CHUNK = 200;
-  for (let i = 0; i < unique.length; i += CHUNK) {
-    const slice = unique.slice(i, i + CHUNK);
+  for (let i = 0; i < missing.length; i += CHUNK) {
+    const slice = missing.slice(i, i + CHUNK);
     const { data } = await supabase.storage.from(BUCKET).createSignedUrls(slice, SIGNED_URL_TTL);
     for (const entry of data ?? []) {
-      if (entry.signedUrl && entry.path) result.set(entry.path, entry.signedUrl);
+      if (entry.signedUrl && entry.path) {
+        result.set(entry.path, entry.signedUrl);
+        SIGN_CACHE.set(entry.path, { url: entry.signedUrl, expiresAt });
+      }
     }
   }
   return result;
+}
+
+/** Drops cached signatures for paths whose file has changed or gone. */
+export function forgetSignedUrls(paths: string[]) {
+  for (const path of paths) SIGN_CACHE.delete(path);
 }
 
 /** True when the query failed only because add-collections.sql has not run. */

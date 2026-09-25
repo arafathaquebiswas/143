@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
 import { BUCKET } from '@/lib/constants';
-import { getPhotos } from '@/lib/photos';
+import { forgetSignedUrls, getPhotos } from '@/lib/photos';
 import type { Collection, Photo, PhotoComment, PhotoFilter } from '@/lib/types';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -176,6 +176,7 @@ export async function deletePhotoAction(id: string): Promise<ActionResult> {
 
     // Files go last: an orphaned file is harmless, an orphaned row is not.
     await supabase.storage.from(BUCKET).remove([photo.storage_path, photo.thumb_path]);
+    forgetSignedUrls([photo.storage_path, photo.thumb_path]);
 
     revalidateAll();
     return { ok: true };
@@ -220,6 +221,16 @@ export async function updatePhotoImageAction(
     const { error } = await supabase.from('photos').update(update).eq('id', id);
 
     if (error) return { ok: false, error: error.message };
+
+    // The bytes at this path were just replaced while the path stayed the
+    // same, so drop the cached signature — otherwise the old picture would
+    // keep being served until the URL expired.
+    const { data: paths } = await supabase
+      .from('photos')
+      .select('storage_path, thumb_path')
+      .eq('id', id)
+      .maybeSingle();
+    if (paths) forgetSignedUrls([paths.storage_path, paths.thumb_path]);
 
     revalidateAll();
     return { ok: true };
