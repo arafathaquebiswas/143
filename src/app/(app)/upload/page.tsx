@@ -16,7 +16,7 @@ export default async function UploadPage() {
       <PageHeading
         eyebrow="Add to our album"
         title="A new memory"
-        hint={`Saved as ${viewer.displayName}. Only the two of you can ever see it.`}
+        hint={`Saved as ${viewer.displayName}. Only the two of us can ever see it.`}
       />
       <UploadClient userId={viewer.id} />
     </div>

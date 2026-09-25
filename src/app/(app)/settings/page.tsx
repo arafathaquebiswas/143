@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <PageHeading
-        eyebrow="Just the two of you"
+        eyebrow="Just the two of us"
         title="Settings"
         hint={
           viewer.partner

@@ -6,12 +6,12 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
-  DownloadIcon,
   EditIcon,
   HeartIcon,
   StarIcon,
   TrashIcon,
 } from '@/components/icons';
+import PhotoEditor from '@/components/PhotoEditor';
 import type { Photo } from '@/lib/types';
 import { cn, formatMemoryDate, formatTimestamp } from '@/lib/utils';
 
@@ -22,8 +22,9 @@ export type LightboxProps = {
   onClose: () => void;
   onToggleFavorite: (photo: Photo) => void;
   onToggleSpecial: (photo: Photo) => void;
-  onSave: (photo: Photo, patch: { caption: string; memory_date: string }) => Promise<void>;
+  onDetailsEdited: (photo: Photo, patch: { caption: string; memory_date: string }) => void;
   onDelete: (photo: Photo) => Promise<void>;
+  onImageEdited: (photo: Photo, size: { width: number; height: number; size_bytes: number }) => void;
 };
 
 export default function Lightbox({
@@ -33,16 +34,15 @@ export default function Lightbox({
   onClose,
   onToggleFavorite,
   onToggleSpecial,
-  onSave,
+  onDetailsEdited,
   onDelete,
+  onImageEdited,
 }: LightboxProps) {
   const photo = photos[index];
 
-  const [editing, setEditing] = useState(false);
-  const [caption, setCaption] = useState('');
-  const [memoryDate, setMemoryDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingImage, setEditingImage] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [direction, setDirection] = useState(0);
 
@@ -58,24 +58,21 @@ export default function Lightbox({
   );
 
   useEffect(() => {
-    setEditing(false);
     setConfirmDelete(false);
+    setEditingImage(false);
     setImageLoaded(false);
   }, [photo?.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (editing) {
-        if (e.key === 'Escape') setEditing(false);
-        return;
-      }
+      if (editingImage) return; // the editor handles its own keys
       if (e.key === 'Escape') onClose();
       if (e.key === 'ArrowRight') go(1);
       if (e.key === 'ArrowLeft') go(-1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editing, go, onClose]);
+  }, [editingImage, go, onClose]);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -96,22 +93,6 @@ export default function Lightbox({
   }, [index, photos, photo?.id]);
 
   if (!photo) return null;
-
-  const startEditing = () => {
-    setCaption(photo.caption ?? '');
-    setMemoryDate(photo.memory_date);
-    setEditing(true);
-  };
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await onSave(photo, { caption, memory_date: memoryDate });
-      setEditing(false);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const remove = async () => {
     setBusy(true);
@@ -135,7 +116,7 @@ export default function Lightbox({
       onTouchEnd={(e) => {
         const start = touchStart.current;
         touchStart.current = null;
-        if (!start || editing) return;
+        if (!start || editingImage) return;
         const dx = e.changedTouches[0].clientX - start.x;
         const dy = e.changedTouches[0].clientY - start.y;
         if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx < 0 ? 1 : -1);
@@ -174,15 +155,7 @@ export default function Lightbox({
           >
             <StarIcon filled={photo.is_special} width={18} height={18} />
           </IconButton>
-          <a
-            href={`/api/download/${photo.id}`}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 backdrop-blur-xl transition-all duration-300 hover:bg-white/15 hover:text-white active:scale-90"
-            aria-label="Download this photo"
-            title="Download"
-          >
-            <DownloadIcon width={18} height={18} />
-          </a>
-          <IconButton label="Edit details" onClick={startEditing} active={editing}>
+          <IconButton label="Edit photo & details" onClick={() => setEditingImage(true)} active={editingImage}>
             <EditIcon width={18} height={18} />
           </IconButton>
           <IconButton label="Delete this photo" onClick={() => setConfirmDelete(true)} hoverClass="hover:bg-danger/25 hover:text-danger">
@@ -228,50 +201,7 @@ export default function Lightbox({
         style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
       >
         <div className="mx-auto w-full max-w-3xl">
-          {editing ? (
-            <div className="space-y-3.5">
-              <label className="block">
-                <span className="tracked mb-2 block text-[0.625rem] font-semibold text-white/45">Caption</span>
-                <textarea
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  rows={2}
-                  maxLength={500}
-                  placeholder="What was happening here?"
-                  className="w-full resize-none rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-3 text-base text-white placeholder:text-white/30 focus:border-white/35 focus:outline-none sm:text-sm"
-                />
-              </label>
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="block">
-                  <span className="tracked mb-2 block text-[0.625rem] font-semibold text-white/45">Memory date</span>
-                  <input
-                    type="date"
-                    value={memoryDate}
-                    onChange={(e) => setMemoryDate(e.target.value)}
-                    className="rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-2.5 text-base text-white [color-scheme:dark] focus:border-white/35 focus:outline-none sm:text-sm"
-                  />
-                </label>
-                <div className="ml-auto flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditing(false)}
-                    className="rounded-full px-5 py-2.5 text-sm text-white/60 transition hover:text-white"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={save}
-                    disabled={busy}
-                    className="sheen rounded-full bg-white px-6 py-2.5 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-60"
-                  >
-                    {busy ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="animate-fade space-y-2 text-white">
+          <div className="animate-fade space-y-2 text-white">
               {photo.caption && (
                 <p className="display text-xl leading-snug sm:text-2xl">{photo.caption}</p>
               )}
@@ -291,10 +221,21 @@ export default function Lightbox({
                   </>
                 )}
               </div>
-            </div>
-          )}
+          </div>
         </div>
       </div>
+
+      {editingImage && (
+        <PhotoEditor
+          photo={photo}
+          onCancel={() => setEditingImage(false)}
+          onSaved={({ caption, memory_date, image }) => {
+            setEditingImage(false);
+            onDetailsEdited(photo, { caption, memory_date });
+            if (image) onImageEdited(photo, image);
+          }}
+        />
+      )}
 
       {confirmDelete && (
         <div className="animate-fade absolute inset-0 z-10 flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm">

@@ -180,6 +180,50 @@ export async function deletePhotoAction(id: string): Promise<ActionResult> {
   }
 }
 
+/**
+ * Called after the browser has replaced an edited image in Storage. The image
+ * keeps its original storage_path, so the row's id, uploader, favorites and
+ * special flag are untouched. Its caption/date can be committed alongside the
+ * new dimensions in the same row update.
+ */
+export async function updatePhotoImageAction(
+  id: string,
+  size: { width: number; height: number; size_bytes: number },
+  patch?: { caption?: string | null; memory_date?: string },
+): Promise<ActionResult> {
+  try {
+    const { supabase } = await requireViewer();
+
+    if (
+      !Number.isFinite(size.width) ||
+      !Number.isFinite(size.height) ||
+      !Number.isFinite(size.size_bytes) ||
+      size.width <= 0 ||
+      size.height <= 0 ||
+      size.size_bytes <= 0
+    ) {
+      return { ok: false, error: 'The edited photo had invalid dimensions.' };
+    }
+
+    const update: Record<string, unknown> = {
+      width: Math.round(size.width),
+      height: Math.round(size.height),
+      size_bytes: Math.round(size.size_bytes),
+    };
+    if (patch && 'caption' in patch) update.caption = patch.caption?.trim() || null;
+    if (patch?.memory_date) update.memory_date = patch.memory_date;
+
+    const { error } = await supabase.from('photos').update(update).eq('id', id);
+
+    if (error) return { ok: false, error: error.message };
+
+    revalidateAll();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
 export async function toggleFavoriteAction(
   id: string,
   makeFavorite: boolean,

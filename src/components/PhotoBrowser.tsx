@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 
 import Lightbox from '@/components/Lightbox';
@@ -37,6 +38,7 @@ export default function PhotoBrowser({
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [exhausted, setExhausted] = useState(initialPhotos.length < PAGE_SIZE);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
   const [loadingMore, startLoading] = useTransition();
   const [, startMutation] = useTransition();
 
@@ -69,9 +71,7 @@ export default function PhotoBrowser({
     mutate(photo.id, { is_special: next }, () => updatePhotoAction(photo.id, { is_special: next }));
   };
 
-  const savePhoto = async (photo: Photo, patch: { caption: string; memory_date: string }) => {
-    const result = await updatePhotoAction(photo.id, patch);
-    if (!result.ok) return setError(result.error);
+  const applyEditedDetails = (photo: Photo, patch: { caption: string; memory_date: string }) => {
     setItems((current) =>
       current.map((p) =>
         p.id === photo.id
@@ -89,6 +89,36 @@ export default function PhotoBrowser({
     setOpenIndex((idx) =>
       idx === null || remaining.length === 0 ? null : Math.min(idx, remaining.length - 1),
     );
+  };
+
+  /**
+   * After an edit the picture lives at the same storage path, so its signed
+   * URL is unchanged and the browser would happily keep showing the cached
+   * old version. A throwaway query parameter forces a re-fetch; router.refresh
+   * then pulls freshly signed URLs from the server.
+   */
+  const handleImageEdited = (
+    photo: Photo,
+    size: { width: number; height: number; size_bytes: number },
+  ) => {
+    const bust = (url: string) =>
+      url ? `${url}${url.includes('?') ? '&' : '?'}edited=${Date.now()}` : url;
+
+    setItems((current) =>
+      current.map((p) =>
+        p.id === photo.id
+          ? {
+              ...p,
+              url: bust(p.url),
+              thumbUrl: bust(p.thumbUrl),
+              width: size.width,
+              height: size.height,
+              size_bytes: size.size_bytes,
+            }
+          : p,
+      ),
+    );
+    router.refresh();
   };
 
   const fetchMore = () => {
@@ -218,8 +248,9 @@ export default function PhotoBrowser({
           onClose={() => setOpenIndex(null)}
           onToggleFavorite={toggleFavorite}
           onToggleSpecial={toggleSpecial}
-          onSave={savePhoto}
+          onDetailsEdited={applyEditedDetails}
           onDelete={removePhoto}
+          onImageEdited={handleImageEdited}
         />
       )}
     </div>

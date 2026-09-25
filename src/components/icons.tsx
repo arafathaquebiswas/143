@@ -102,16 +102,6 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
-export function DownloadIcon(props: IconProps) {
-  return (
-    <svg {...base} {...props}>
-      <path d="M12 4v12" />
-      <path d="m7.5 11.5 4.5 4.5 4.5-4.5" />
-      <path d="M4.5 20h15" />
-    </svg>
-  );
-}
-
 export function EditIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
@@ -179,6 +169,52 @@ export function CheckIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
       <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
+export function RotateLeftIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4.5 9.5h6v-6" />
+      <path d="M4.9 9.4A7.6 7.6 0 1 1 4.5 14" />
+    </svg>
+  );
+}
+
+export function RotateRightIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M19.5 9.5h-6v-6" />
+      <path d="M19.1 9.4A7.6 7.6 0 1 0 19.5 14" />
+    </svg>
+  );
+}
+
+export function FlipIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3.5v17" />
+      <path d="M9 7.5 4 12l5 4.5v-9Z" />
+      <path d="M15 7.5 20 12l-5 4.5v-9Z" />
+    </svg>
+  );
+}
+
+export function ResetIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" />
+      <path d="M4.5 4.5V10h5.5" />
+    </svg>
+  );
+}
+
+export function CropIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M6.5 2.5v15h15" />
+      <path d="M2.5 6.5h15v15" />
     </svg>
   );
 }

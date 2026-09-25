@@ -1,7 +1,7 @@
 # Our Little World
 
 A private photo album for two people. No sign-up, no feed, no strangers —
-just the two of you and everything you have saved together.
+just the two of us and everything we have saved together.
 
 Built with **Next.js 15**, **TypeScript**, **Tailwind CSS 4** and **Supabase**.
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for how it works and why.
@@ -21,8 +21,9 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for how it works and why.
 - **Timeline** grouped by month and day, filterable by year and month.
 - **Favorites** — you each keep your own hearts, and the viewer shows who
   loved what.
-- **Edit and delete** any photo, either of you.
-- **Download** any photo to your phone or computer.
+- **Edit** any photo — caption, date, and the picture itself: crop, rotate,
+  flip and reposition, saved straight back over the original.
+- **Delete** any photo, either of you.
 - **Days together** counter, with a start date you set in Settings.
 - **Light and dark mode**, and a layout built for phones first.
 
