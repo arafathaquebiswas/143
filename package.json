@@ -9,11 +9,12 @@
     "typecheck": "tsc --noEmit",
     "connect": "node scripts/connect-supabase.mjs",
     "set-key": "node scripts/set-admin-key.mjs",
+    "provision": "node scripts/provision.mjs",
     "doctor": "node scripts/doctor.mjs",
     "add-user": "node scripts/add-user.mjs",
-    "backup": "node scripts/backup.mjs",
-    "provision": "node scripts/provision.mjs",
-    "e2e": "node scripts/e2e.mjs"
+    "e2e": "node scripts/e2e.mjs",
+    "cleanup-orphans": "node scripts/cleanup-orphans.mjs",
+    "backup": "node scripts/backup.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
