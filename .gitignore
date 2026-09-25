@@ -16,3 +16,10 @@ next-env.d.ts
 # Backup credentials (service role key — never commit, never deploy)
 .env.backup.local
 backups/
+.env*
+
+# Vercel CLI adds a blanket .env* rule above; keep the blank template tracked.
+!.env.local.example
+
+# Supabase CLI scratch files
+supabase/.temp/
