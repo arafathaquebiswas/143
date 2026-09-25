@@ -79,9 +79,12 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
   const { data: favRows } = await supabase.from('favorites').select('photo_id, user_id');
   const favorites = favRows ?? [];
 
+  // The foreign key is named explicitly: photos and allowed_users are related
+  // twice (uploader_id, and again through favorites), so PostgREST needs to be
+  // told which path to follow or it refuses the embed with PGRST201.
   let query = supabase
     .from('photos')
-    .select('*, uploader:allowed_users(display_name)')
+    .select('*, uploader:allowed_users!photos_uploader_id_fkey(display_name)')
     .range(offset, offset + limit - 1);
 
   query =
