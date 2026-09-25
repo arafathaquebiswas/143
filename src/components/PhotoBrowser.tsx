@@ -16,7 +16,7 @@ import { PAGE_SIZE } from '@/lib/constants';
 import type { Photo, PhotoFilter } from '@/lib/types';
 import { formatDayHeading, formatMonthHeading } from '@/lib/utils';
 
-type Layout = 'grid' | 'timeline' | 'rail';
+type Layout = 'grid' | 'masonry' | 'timeline' | 'rail';
 
 export default function PhotoBrowser({
   initialPhotos,
@@ -40,9 +40,6 @@ export default function PhotoBrowser({
   const [loadingMore, startLoading] = useTransition();
   const [, startMutation] = useTransition();
 
-  /** Applies a local change straight away, then persists it. On failure only
-   *  the fields we touched are rolled back, so a slower request cannot undo a
-   *  newer change to a different photo. */
   const mutate = (
     id: string,
     patch: Partial<Photo>,
@@ -54,11 +51,9 @@ export default function PhotoBrowser({
     startMutation(async () => {
       const result = await persist();
       if (result.ok || !before) return;
-
       const rollback = Object.fromEntries(
         Object.keys(patch).map((key) => [key, before[key as keyof Photo]]),
       ) as Partial<Photo>;
-
       setItems((current) => current.map((p) => (p.id === id ? { ...p, ...rollback } : p)));
       setError(result.error);
     });
@@ -71,30 +66,24 @@ export default function PhotoBrowser({
 
   const toggleSpecial = (photo: Photo) => {
     const next = !photo.is_special;
-    mutate(photo.id, { is_special: next }, () =>
-      updatePhotoAction(photo.id, { is_special: next }),
-    );
+    mutate(photo.id, { is_special: next }, () => updatePhotoAction(photo.id, { is_special: next }));
   };
 
   const savePhoto = async (photo: Photo, patch: { caption: string; memory_date: string }) => {
     const result = await updatePhotoAction(photo.id, patch);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
+    if (!result.ok) return setError(result.error);
     setItems((current) =>
       current.map((p) =>
-        p.id === photo.id ? { ...p, caption: patch.caption.trim() || null, memory_date: patch.memory_date } : p,
+        p.id === photo.id
+          ? { ...p, caption: patch.caption.trim() || null, memory_date: patch.memory_date }
+          : p,
       ),
     );
   };
 
   const removePhoto = async (photo: Photo) => {
     const result = await deletePhotoAction(photo.id);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
+    if (!result.ok) return setError(result.error);
     const remaining = items.filter((p) => p.id !== photo.id);
     setItems(remaining);
     setOpenIndex((idx) =>
@@ -106,11 +95,7 @@ export default function PhotoBrowser({
     setError(null);
     startLoading(async () => {
       try {
-        const more = await loadMorePhotosAction({
-          ...filter,
-          limit: PAGE_SIZE,
-          offset: items.length,
-        });
+        const more = await loadMorePhotosAction({ ...filter, limit: PAGE_SIZE, offset: items.length });
         setItems((current) => {
           const seen = new Set(current.map((p) => p.id));
           return [...current, ...more.filter((p) => !seen.has(p.id))];
@@ -124,39 +109,34 @@ export default function PhotoBrowser({
 
   const months = useMemo(() => (layout === 'timeline' ? groupByMonth(items) : []), [items, layout]);
 
-  if (items.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-line-strong bg-surface/60 px-6 py-16 text-center">
-        <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent-soft text-accent">
-          <CameraIcon width={24} height={24} />
-        </span>
-        <h3 className="font-display text-xl">{emptyTitle}</h3>
-        <p className="mt-1.5 max-w-xs text-sm text-muted">{emptyHint}</p>
-      </div>
-    );
-  }
+  if (items.length === 0) return <EmptyState title={emptyTitle} hint={emptyHint} />;
 
   const openAt = (photo: Photo) => setOpenIndex(items.findIndex((p) => p.id === photo.id));
 
+  const cardProps = (photo: Photo, i: number) => ({
+    photo,
+    onOpen: () => openAt(photo),
+    onToggleFavorite: () => toggleFavorite(photo),
+    className: 'animate-reveal',
+    style: { animationDelay: `${Math.min(i, 14) * 45}ms` },
+  });
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {error && (
-        <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+        <p className="rounded-2xl border border-danger/25 bg-danger/10 px-5 py-3.5 text-sm text-danger">
           {error}
         </p>
       )}
 
       {layout === 'rail' && (
-        <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+        <div className="no-scrollbar -mx-5 flex snap-x snap-mandatory gap-3.5 overflow-x-auto px-5 pb-2 sm:mx-0 sm:px-0">
           {items.map((photo, i) => (
             <PhotoCard
               key={photo.id}
-              photo={photo}
-              showMeta={false}
-              onOpen={() => openAt(photo)}
-              onToggleFavorite={() => toggleFavorite(photo)}
-              className="animate-rise w-40 shrink-0 snap-start sm:w-48"
-              style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+              {...cardProps(photo, i)}
+              ratio="portrait"
+              className="animate-reveal w-[9.5rem] shrink-0 snap-start sm:w-[12rem]"
             />
           ))}
         </div>
@@ -165,48 +145,48 @@ export default function PhotoBrowser({
       {layout === 'grid' && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
           {items.map((photo, i) => (
-            <PhotoCard
-              key={photo.id}
-              photo={photo}
-              onOpen={() => openAt(photo)}
-              onToggleFavorite={() => toggleFavorite(photo)}
-              className="animate-rise"
-              style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
-            />
+            <PhotoCard key={photo.id} {...cardProps(photo, i)} ratio="portrait" />
+          ))}
+        </div>
+      )}
+
+      {layout === 'masonry' && (
+        <div className="masonry columns-2 sm:columns-3 lg:columns-4">
+          {items.map((photo, i) => (
+            <PhotoCard key={photo.id} {...cardProps(photo, i)} ratio="natural" />
           ))}
         </div>
       )}
 
       {layout === 'timeline' && (
-        <div className="space-y-12">
-          {months.map((month) => (
-            <section key={month.key}>
-              <div className="mb-5 flex items-center gap-3">
-                <h2 className="font-display text-2xl sm:text-3xl">{month.label}</h2>
-                <span className="h-px flex-1 bg-line" />
-                <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted">
-                  {month.count} {month.count === 1 ? 'photo' : 'photos'}
+        <div className="space-y-16">
+          {months.map((month, mi) => (
+            <section key={month.key} className="animate-reveal" style={{ animationDelay: `${mi * 70}ms` }}>
+              <div className="mb-7 flex items-baseline gap-4">
+                <h2 className="display text-[1.75rem] leading-none sm:text-[2.25rem]">
+                  {month.label}
+                </h2>
+                <span className="hairline flex-1" />
+                <span className="shrink-0 text-xs font-medium tabular-nums text-muted">
+                  {month.count}
                 </span>
               </div>
 
-              <div className="space-y-8">
+              <div className="space-y-10">
                 {month.days.map((day) => (
                   <div key={day.key}>
-                    <p className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
-                      <HeartIcon filled width={14} height={14} />
-                      <span className="text-ink">{day.title}</span>
-                      <span className="text-muted">· {day.label}</span>
-                    </p>
+                    <div className="mb-4 flex items-center gap-2.5">
+                      <span className="text-accent">
+                        <HeartIcon filled width={13} height={13} />
+                      </span>
+                      <p className="text-[0.9375rem] font-medium leading-none text-ink">
+                        {day.title}
+                      </p>
+                      <span className="text-xs text-muted">{day.label}</span>
+                    </div>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-                      {day.photos.map((photo) => (
-                        <PhotoCard
-                          key={photo.id}
-                          photo={photo}
-                          showMeta={false}
-                          onOpen={() => openAt(photo)}
-                          onToggleFavorite={() => toggleFavorite(photo)}
-                          className="animate-rise"
-                        />
+                      {day.photos.map((photo, i) => (
+                        <PhotoCard key={photo.id} {...cardProps(photo, i)} ratio="portrait" />
                       ))}
                     </div>
                   </div>
@@ -218,12 +198,12 @@ export default function PhotoBrowser({
       )}
 
       {loadMore && !exhausted && (
-        <div className="flex justify-center pt-2">
+        <div className="flex justify-center pt-4">
           <button
             type="button"
             onClick={fetchMore}
             disabled={loadingMore}
-            className="rounded-full border border-line bg-surface px-6 py-3 text-sm font-medium shadow-soft transition hover:border-accent hover:text-accent disabled:opacity-60"
+            className="sheen rounded-full border border-line/70 bg-surface/70 px-8 py-3.5 text-sm font-medium backdrop-blur-xl transition-all duration-300 hover:border-accent/40 hover:text-accent disabled:opacity-60"
           >
             {loadingMore ? 'Loading…' : 'Load more memories'}
           </button>
@@ -246,31 +226,41 @@ export default function PhotoBrowser({
   );
 }
 
+function EmptyState({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div className="animate-reveal relative overflow-hidden rounded-[var(--radius-xl2)] border border-dashed border-line-strong/70 bg-surface/40 px-8 py-20 text-center">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-accent-soft/40 to-transparent" />
+      <div className="relative">
+        <span className="animate-breathe mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-accent/15 to-clay/10 text-accent ring-1 ring-accent/15">
+          <CameraIcon width={26} height={26} />
+        </span>
+        <h3 className="display text-2xl">{title}</h3>
+        <p className="mx-auto mt-2.5 max-w-xs text-sm leading-relaxed text-muted">{hint}</p>
+      </div>
+    </div>
+  );
+}
+
 type DayGroup = { key: string; label: string; title: string; photos: Photo[] };
 type MonthGroup = { key: string; label: string; count: number; days: DayGroup[] };
 
-/** Buckets an already-sorted list into month sections and day sub-sections. */
 function groupByMonth(photos: Photo[]): MonthGroup[] {
   const months = new Map<string, Map<string, Photo[]>>();
-
   for (const photo of photos) {
     const monthKey = photo.memory_date.slice(0, 7);
-    const dayKey = photo.memory_date;
     if (!months.has(monthKey)) months.set(monthKey, new Map());
     const days = months.get(monthKey)!;
-    if (!days.has(dayKey)) days.set(dayKey, []);
-    days.get(dayKey)!.push(photo);
+    if (!days.has(photo.memory_date)) days.set(photo.memory_date, []);
+    days.get(photo.memory_date)!.push(photo);
   }
 
   return [...months.entries()].map(([monthKey, days]) => {
     const dayGroups: DayGroup[] = [...days.entries()].map(([dayKey, dayPhotos]) => ({
       key: dayKey,
       label: formatDayHeading(dayKey),
-      // The first caption of the day doubles as that day's little headline.
       title: dayPhotos.find((p) => p.caption)?.caption ?? 'A day together',
       photos: dayPhotos,
     }));
-
     return {
       key: monthKey,
       label: formatMonthHeading(`${monthKey}-01`),

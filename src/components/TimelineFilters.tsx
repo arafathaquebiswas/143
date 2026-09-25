@@ -32,7 +32,7 @@ export default function TimelineFilters({ years }: { years: number[] }) {
   // text-base on phones, not text-sm: iOS Safari force-zooms the page when a
   // focused control is under 16px and never zooms back out.
   const selectClass =
-    'rounded-full border border-line bg-surface px-4 py-2.5 text-base transition focus:border-accent focus:outline-none disabled:opacity-60 sm:text-sm';
+    'rounded-full border border-line/70 bg-surface/60 px-5 py-3 text-base font-medium backdrop-blur-xl transition-all duration-300 focus:border-accent/50 focus:outline-none focus:ring-4 focus:ring-[var(--ring)] disabled:opacity-60 sm:text-sm';
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -70,7 +70,7 @@ export default function TimelineFilters({ years }: { years: number[] }) {
         <button
           type="button"
           onClick={() => apply({ year: '', month: '' })}
-          className="rounded-full px-3 py-2.5 text-sm text-muted transition hover:text-accent"
+          className="rounded-full px-4 py-3 text-sm font-medium text-muted transition-colors hover:text-accent"
         >
           Clear
         </button>

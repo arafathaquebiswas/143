@@ -21,72 +21,73 @@ const LINKS = [
   { href: '/', label: 'Home', Icon: HomeIcon },
   { href: '/gallery', label: 'Gallery', Icon: GalleryIcon },
   { href: '/timeline', label: 'Timeline', Icon: TimelineIcon },
-  { href: '/favorites', label: 'Favorites', Icon: HeartIcon },
-  { href: '/upload', label: 'Upload', Icon: UploadIcon },
+  { href: '/favorites', label: 'Loved', Icon: HeartIcon },
+  { href: '/upload', label: 'Add', Icon: UploadIcon },
 ];
 
 function isActive(pathname: string, href: string) {
   return href === '/' ? pathname === '/' : pathname.startsWith(href);
 }
 
-/** Top bar on desktop, thumb-friendly tab bar on phones. */
 export default function Nav({ title, name }: { title: string; name: string }) {
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-line/80 bg-bg/85 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
-          <Link href="/" className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+      <header className="glass sticky top-0 z-30 border-b border-line/60">
+        <div className="mx-auto flex h-[4.5rem] max-w-6xl items-center gap-4 px-5 sm:px-8">
+          <Link href="/" className="group flex min-w-0 items-center gap-3">
+            <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-clay text-white shadow-soft transition-transform duration-500 group-hover:scale-105 group-hover:rotate-3">
               <HeartIcon filled width={18} height={18} />
             </span>
-            <span className="truncate font-display text-lg font-medium tracking-tight">
-              {title}
-            </span>
+            <span className="display truncate text-[1.35rem] leading-none">{title}</span>
           </Link>
 
-          <nav className="ml-auto hidden items-center gap-1 md:flex">
-            {LINKS.map(({ href, label, Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  'flex items-center gap-2 rounded-full px-3.5 py-2 text-sm transition-colors',
-                  isActive(pathname, href)
-                    ? 'bg-accent-soft text-accent'
-                    : 'text-muted hover:bg-surface-2 hover:text-ink',
-                )}
-              >
-                <Icon width={17} height={17} />
-                {label}
-              </Link>
-            ))}
+          {/* Floating pill navigation */}
+          <nav className="ml-auto hidden items-center rounded-full border border-line/70 bg-surface/60 p-1 backdrop-blur-xl md:flex">
+            {LINKS.map(({ href, label, Icon }) => {
+              const active = isActive(pathname, href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    'relative flex items-center gap-2 rounded-full px-4 py-2 text-[0.8125rem] font-medium transition-all duration-300',
+                    active
+                      ? 'bg-gradient-to-br from-accent to-clay text-white shadow-soft'
+                      : 'text-muted hover:text-ink',
+                  )}
+                >
+                  <Icon width={16} height={16} />
+                  {label}
+                </Link>
+              );
+            })}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2 md:ml-2">
+          <div className="ml-auto flex items-center gap-1.5 md:ml-0">
             <ThemeToggle />
             <Link
               href="/settings"
               className={cn(
-                'hidden h-10 w-10 items-center justify-center rounded-full border border-line bg-surface transition-colors md:inline-flex',
-                isActive(pathname, '/settings') ? 'text-accent' : 'text-muted hover:text-accent',
+                'hidden h-10 w-10 items-center justify-center rounded-full border border-line/70 bg-surface/60 backdrop-blur-xl transition-all duration-300 hover:border-accent/40 hover:text-accent md:inline-flex',
+                isActive(pathname, '/settings') ? 'text-accent' : 'text-muted',
               )}
               aria-label="Settings"
               title={name}
             >
-              <SettingsIcon />
+              <SettingsIcon width={17} height={17} />
             </Link>
             <button
               type="button"
               onClick={() => startTransition(() => void signOutAction())}
               disabled={pending}
-              className="hidden h-10 w-10 items-center justify-center rounded-full border border-line bg-surface text-muted transition-colors hover:text-danger disabled:opacity-50 md:inline-flex"
+              className="hidden h-10 w-10 items-center justify-center rounded-full border border-line/70 bg-surface/60 text-muted backdrop-blur-xl transition-all duration-300 hover:border-danger/40 hover:text-danger disabled:opacity-50 md:inline-flex"
               aria-label="Sign out"
               title="Sign out"
             >
-              <SignOutIcon />
+              <SignOutIcon width={17} height={17} />
             </button>
           </div>
         </div>
@@ -94,52 +95,39 @@ export default function Nav({ title, name }: { title: string; name: string }) {
 
       {/* Mobile tab bar */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-line/80 bg-bg/90 backdrop-blur-xl md:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-30 border-t border-line/60 md:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="mx-auto flex max-w-lg items-stretch justify-between px-2">
-          {LINKS.map(({ href, label, Icon }) => {
-            const active = isActive(pathname, href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] transition-colors',
-                  active ? 'text-accent' : 'text-muted',
-                )}
-              >
-                <span
+        <div className="mx-auto flex max-w-lg items-stretch justify-between px-1.5">
+          {[...LINKS, { href: '/settings', label: 'You', Icon: SettingsIcon }].map(
+            ({ href, label, Icon }) => {
+              const active = isActive(pathname, href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'flex h-8 w-12 items-center justify-center rounded-full transition-colors',
-                    active && 'bg-accent-soft',
+                    'relative flex flex-1 flex-col items-center gap-1 pb-2.5 pt-3 text-[0.625rem] font-medium tracking-wide transition-colors duration-300',
+                    active ? 'text-accent' : 'text-muted',
                   )}
                 >
-                  <Icon width={19} height={19} />
-                </span>
-                {label}
-              </Link>
-            );
-          })}
-          <Link
-            href="/settings"
-            aria-current={isActive(pathname, '/settings') ? 'page' : undefined}
-            className={cn(
-              'flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] transition-colors',
-              isActive(pathname, '/settings') ? 'text-accent' : 'text-muted',
-            )}
-          >
-            <span
-              className={cn(
-                'flex h-8 w-12 items-center justify-center rounded-full transition-colors',
-                isActive(pathname, '/settings') && 'bg-accent-soft',
-              )}
-            >
-              <SettingsIcon width={19} height={19} />
-            </span>
-            You
-          </Link>
+                  {active && (
+                    <span className="absolute inset-x-3 top-0 h-[2px] rounded-full bg-gradient-to-r from-transparent via-accent to-transparent" />
+                  )}
+                  <span
+                    className={cn(
+                      'flex h-7 w-7 items-center justify-center transition-transform duration-300',
+                      active && 'scale-110',
+                    )}
+                  >
+                    <Icon width={20} height={20} />
+                  </span>
+                  {label}
+                </Link>
+              );
+            },
+          )}
         </div>
       </nav>
     </>

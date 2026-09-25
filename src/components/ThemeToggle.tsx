@@ -32,11 +32,11 @@ export default function ThemeToggle({ className = '' }: { className?: string }) 
     <button
       type="button"
       onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-      className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface text-muted transition-colors hover:text-accent active:scale-95 ${className}`}
+      className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-line/70 bg-surface/60 text-muted backdrop-blur-xl transition-all duration-300 hover:border-accent/40 hover:text-accent active:scale-90 ${className}`}
       aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
     >
-      {mounted && theme === 'dark' ? <MoonIcon /> : <SunIcon />}
+      {mounted && theme === 'dark' ? <MoonIcon width={17} height={17} /> : <SunIcon width={17} height={17} />}
     </button>
   );
 }

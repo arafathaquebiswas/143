@@ -199,14 +199,16 @@ export default function UploadClient({ userId }: { userId: string }) {
           addFiles(e.dataTransfer.files);
         }}
         className={cn(
-          'rounded-[var(--radius-card)] border-2 border-dashed bg-surface/60 px-6 py-10 text-center transition-colors',
-          dragging ? 'border-accent bg-accent-soft/50' : 'border-line-strong',
+          'relative overflow-hidden rounded-[var(--radius-xl2)] border-2 border-dashed px-7 py-14 text-center transition-all duration-500',
+          dragging
+            ? 'border-accent bg-accent-soft/60 scale-[1.01]'
+            : 'border-line-strong/70 bg-surface/40 hover:border-accent/40',
         )}
       >
-        <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-accent-soft text-accent">
-          <CameraIcon width={24} height={24} />
+        <span className="animate-breathe mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-accent/15 to-clay/10 text-accent ring-1 ring-accent/15">
+          <CameraIcon width={26} height={26} />
         </span>
-        <h2 className="font-display text-xl">Add to our album</h2>
+        <h2 className="display text-2xl">Choose your photos</h2>
         <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted">
           Pick as many photos as you like. They are resized on your phone first, so uploads stay
           quick even on a slow connection.
@@ -214,7 +216,7 @@ export default function UploadClient({ userId }: { userId: string }) {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="mt-5 inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-medium text-accent-contrast shadow-soft transition hover:bg-accent-hover active:scale-95"
+          className="sheen mt-6 inline-flex items-center gap-2.5 rounded-full bg-gradient-to-br from-accent to-clay px-7 py-3.5 text-sm font-semibold text-white shadow-glow transition-all duration-300 hover:shadow-float active:scale-95"
         >
           <UploadIcon width={17} height={17} />
           Choose photos
@@ -233,7 +235,7 @@ export default function UploadClient({ userId }: { userId: string }) {
       </div>
 
       {notice && (
-        <p className="rounded-xl border border-accent/25 bg-accent-soft px-4 py-3 text-sm text-accent">
+        <p className="animate-reveal rounded-2xl border border-accent/25 bg-accent-soft px-5 py-3.5 text-sm text-accent">
           {notice}
         </p>
       )}
@@ -241,12 +243,12 @@ export default function UploadClient({ userId }: { userId: string }) {
       {items.length > 0 && (
         <>
           {/* Batch details */}
-          <div className="space-y-4 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-soft">
-            <h3 className="font-display text-lg">About these memories</h3>
+          <div className="card space-y-5 p-6 sm:p-7">
+            <h3 className="display text-xl">About these memories</h3>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
-                <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-muted">
+                <span className="tracked mb-2.5 block text-[0.625rem] font-semibold text-muted">
                   When did it happen?
                 </span>
                 <input
@@ -254,7 +256,7 @@ export default function UploadClient({ userId }: { userId: string }) {
                   value={memoryDate}
                   disabled={useFileDates}
                   onChange={(e) => setMemoryDate(e.target.value)}
-                  className="w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 text-base sm:text-sm disabled:opacity-50"
+                  className="w-full rounded-2xl border border-line bg-bg/60 px-4 py-3 text-base transition-all duration-300 focus:border-accent/50 focus:outline-none focus:ring-4 focus:ring-[var(--ring)] disabled:opacity-50 sm:text-sm"
                 />
                 <label className="mt-2 flex items-center gap-2 text-xs text-muted">
                   <input
@@ -268,7 +270,7 @@ export default function UploadClient({ userId }: { userId: string }) {
               </label>
 
               <label className="block">
-                <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-muted">
+                <span className="tracked mb-2.5 block text-[0.625rem] font-semibold text-muted">
                   Caption for all of them
                 </span>
                 <input
@@ -277,7 +279,7 @@ export default function UploadClient({ userId }: { userId: string }) {
                   maxLength={500}
                   onChange={(e) => setSharedCaption(e.target.value)}
                   placeholder="Our first trip together"
-                  className="w-full rounded-xl border border-line bg-bg px-3.5 py-2.5 text-base sm:text-sm placeholder:text-muted/70"
+                  className="w-full rounded-2xl border border-line bg-bg/60 px-4 py-3 text-base transition-all duration-300 placeholder:text-muted/50 focus:border-accent/50 focus:outline-none focus:ring-4 focus:ring-[var(--ring)] sm:text-sm"
                 />
                 <span className="mt-2 block text-xs text-muted">
                   You can give any photo its own caption below.
@@ -290,10 +292,10 @@ export default function UploadClient({ userId }: { userId: string }) {
               onClick={() => setMarkSpecial((v) => !v)}
               aria-pressed={markSpecial}
               className={cn(
-                'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition',
+                'inline-flex items-center gap-2.5 rounded-full border px-5 py-2.5 text-sm font-medium transition-all duration-300',
                 markSpecial
-                  ? 'border-gold bg-gold-soft text-gold'
-                  : 'border-line text-muted hover:text-ink',
+                  ? 'border-gold/50 bg-gold-soft text-gold shadow-soft'
+                  : 'border-line text-muted hover:border-gold/40 hover:text-ink',
               )}
             >
               <StarIcon filled={markSpecial} width={16} height={16} />
@@ -306,9 +308,9 @@ export default function UploadClient({ userId }: { userId: string }) {
             {items.map((item) => (
               <div
                 key={item.key}
-                className="animate-rise flex gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-3 shadow-soft"
+                className="card animate-reveal flex gap-3.5 p-3.5"
               >
-                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-surface-2">
+                <div className="relative h-[4.5rem] w-[4.5rem] shrink-0 overflow-hidden rounded-2xl bg-surface-2 ring-1 ring-line/60">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
                   {item.status === 'done' && (
@@ -326,13 +328,13 @@ export default function UploadClient({ userId }: { userId: string }) {
                     disabled={busy}
                     onChange={(e) => patch(item.key, { caption: e.target.value })}
                     placeholder={sharedCaption || 'Add a caption (optional)'}
-                    className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-base sm:text-sm placeholder:text-muted/70 disabled:opacity-60"
+                    className="w-full rounded-xl border border-line bg-bg/60 px-3.5 py-2.5 text-base transition-all duration-300 placeholder:text-muted/50 focus:border-accent/50 focus:outline-none disabled:opacity-60 sm:text-sm"
                   />
 
                   {item.status === 'working' && (
                     <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
                       <div
-                        className="h-full rounded-full bg-accent transition-[width] duration-300"
+                        className="h-full rounded-full bg-gradient-to-r from-accent to-clay transition-[width] duration-500"
                         style={{ width: `${item.progress}%` }}
                       />
                     </div>
@@ -365,7 +367,7 @@ export default function UploadClient({ userId }: { userId: string }) {
 
           {/* Sticky action bar */}
           <div
-            className="sticky bottom-20 z-20 flex items-center gap-3 rounded-full border border-line bg-surface/95 px-4 py-3 shadow-float backdrop-blur-xl md:bottom-6"
+            className="glass sticky bottom-24 z-20 flex items-center gap-3 rounded-full border border-line/70 px-5 py-3.5 shadow-float md:bottom-6"
           >
             <p className="min-w-0 flex-1 truncate text-sm text-muted">
               {items.length} photo{items.length === 1 ? '' : 's'} · {formatBytes(totalBytes)}
@@ -374,7 +376,7 @@ export default function UploadClient({ userId }: { userId: string }) {
               type="button"
               onClick={upload}
               disabled={busy || readyCount === 0}
-              className="shrink-0 rounded-full bg-accent px-6 py-2.5 text-sm font-medium text-accent-contrast transition hover:bg-accent-hover active:scale-95 disabled:opacity-50"
+              className="sheen shrink-0 rounded-full bg-gradient-to-br from-accent to-clay px-7 py-3 text-sm font-semibold text-white shadow-glow transition-all duration-300 active:scale-95 disabled:opacity-50"
             >
               {busy ? 'Uploading…' : `Upload ${readyCount || ''}`.trim()}
             </button>

@@ -44,26 +44,25 @@ export default function Lightbox({
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [direction, setDirection] = useState(0);
 
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   const go = useCallback(
     (step: number) => {
       if (photos.length < 2) return;
-      const next = (index + step + photos.length) % photos.length;
-      onIndexChange(next);
+      setDirection(step);
+      onIndexChange((index + step + photos.length) % photos.length);
     },
     [index, photos.length, onIndexChange],
   );
 
-  // Reset transient UI whenever a different photo comes into view.
   useEffect(() => {
     setEditing(false);
     setConfirmDelete(false);
     setImageLoaded(false);
   }, [photo?.id]);
 
-  // Keyboard control.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (editing) {
@@ -78,7 +77,6 @@ export default function Lightbox({
     return () => window.removeEventListener('keydown', onKey);
   }, [editing, go, onClose]);
 
-  // Keep the page behind from scrolling while the viewer is open.
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -87,7 +85,6 @@ export default function Lightbox({
     };
   }, []);
 
-  // Warm up the neighbouring images so paging feels instant.
   useEffect(() => {
     for (const step of [1, -1]) {
       const neighbour = photos[(index + step + photos.length) % photos.length];
@@ -128,7 +125,7 @@ export default function Lightbox({
 
   return (
     <div
-      className="animate-fade fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-md"
+      className="animate-fade fixed inset-0 z-50 flex flex-col bg-[#0b0807]/95 backdrop-blur-2xl"
       role="dialog"
       aria-modal="true"
       aria-label="Photo viewer"
@@ -145,13 +142,19 @@ export default function Lightbox({
         else if (dy > 110 && Math.abs(dy) > Math.abs(dx) * 1.5) onClose();
       }}
     >
-      {/* Top bar */}
+      {/* The photo's own colour, bloomed behind it. */}
       <div
-        className="flex shrink-0 items-center gap-2 px-3 pt-3 text-white/90 sm:px-5 sm:pt-4"
-        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-30 blur-[120px] saturate-150 transition-opacity duration-700"
+        style={{ backgroundImage: `url(${photo.thumbUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+      />
+
+      <div
+        className="relative flex shrink-0 items-center gap-2 px-4 pt-4 sm:px-6"
+        style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}
       >
-        <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs tabular-nums">
-          {index + 1} / {photos.length}
+        <span className="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium tabular-nums text-white/80 backdrop-blur-xl">
+          {index + 1} <span className="text-white/35">/</span> {photos.length}
         </span>
 
         <div className="ml-auto flex items-center gap-1.5">
@@ -159,43 +162,39 @@ export default function Lightbox({
             label={photo.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
             onClick={() => onToggleFavorite(photo)}
             active={photo.isFavorite}
+            activeClass="border-accent/40 bg-accent/20 text-accent"
           >
-            <HeartIcon filled={photo.isFavorite} />
+            <HeartIcon filled={photo.isFavorite} width={18} height={18} />
           </IconButton>
           <IconButton
             label={photo.is_special ? 'Unmark as special' : 'Mark as special'}
             onClick={() => onToggleSpecial(photo)}
             active={photo.is_special}
-            activeClass="bg-gold/25 text-gold"
+            activeClass="border-gold/40 bg-gold/20 text-gold"
           >
-            <StarIcon filled={photo.is_special} />
+            <StarIcon filled={photo.is_special} width={18} height={18} />
           </IconButton>
           <a
             href={`/api/download/${photo.id}`}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/90 transition hover:bg-white/20 active:scale-90"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 backdrop-blur-xl transition-all duration-300 hover:bg-white/15 hover:text-white active:scale-90"
             aria-label="Download this photo"
             title="Download"
           >
-            <DownloadIcon />
+            <DownloadIcon width={18} height={18} />
           </a>
           <IconButton label="Edit details" onClick={startEditing} active={editing}>
-            <EditIcon />
+            <EditIcon width={18} height={18} />
           </IconButton>
-          <IconButton
-            label="Delete this photo"
-            onClick={() => setConfirmDelete(true)}
-            hoverClass="hover:bg-red-500/30"
-          >
-            <TrashIcon />
+          <IconButton label="Delete this photo" onClick={() => setConfirmDelete(true)} hoverClass="hover:bg-danger/25 hover:text-danger">
+            <TrashIcon width={18} height={18} />
           </IconButton>
           <IconButton label="Close viewer" onClick={onClose}>
-            <CloseIcon />
+            <CloseIcon width={18} height={18} />
           </IconButton>
         </div>
       </div>
 
-      {/* Image stage */}
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-2 py-3 sm:px-16">
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-3 py-4 sm:px-20">
         {photos.length > 1 && (
           <>
             <NavButton side="left" onClick={() => go(-1)} />
@@ -211,53 +210,52 @@ export default function Lightbox({
           onLoad={() => setImageLoaded(true)}
           onError={() => setImageLoaded(true)}
           className={cn(
-            'max-h-full max-w-full rounded-lg object-contain shadow-2xl transition-opacity duration-300',
-            imageLoaded ? 'opacity-100' : 'opacity-0',
+            'max-h-full max-w-full rounded-2xl object-contain shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9)] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            imageLoaded
+              ? 'scale-100 opacity-100 blur-0'
+              : direction >= 0
+                ? 'translate-x-4 scale-[0.97] opacity-0 blur-sm'
+                : '-translate-x-4 scale-[0.97] opacity-0 blur-sm',
           )}
         />
         {!imageLoaded && (
-          <div className="absolute h-10 w-10 animate-spin rounded-full border-2 border-white/25 border-t-white/80" />
+          <div className="absolute h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-white/70" />
         )}
       </div>
 
-      {/* Details / edit panel */}
       <div
-        className="shrink-0 border-t border-white/10 bg-black/45 px-4 py-4 sm:px-6"
-        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        className="relative shrink-0 border-t border-white/10 bg-black/30 px-5 py-5 backdrop-blur-2xl sm:px-8"
+        style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
       >
         <div className="mx-auto w-full max-w-3xl">
           {editing ? (
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               <label className="block">
-                <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-white/50">
-                  Caption
-                </span>
+                <span className="tracked mb-2 block text-[0.625rem] font-semibold text-white/45">Caption</span>
                 <textarea
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
                   rows={2}
                   maxLength={500}
                   placeholder="What was happening here?"
-                  className="w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3.5 py-2.5 text-base text-white placeholder:text-white/35 focus:border-white/40 focus:outline-none sm:text-sm"
+                  className="w-full resize-none rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-3 text-base text-white placeholder:text-white/30 focus:border-white/35 focus:outline-none sm:text-sm"
                 />
               </label>
               <div className="flex flex-wrap items-end gap-3">
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-white/50">
-                    Memory date
-                  </span>
+                  <span className="tracked mb-2 block text-[0.625rem] font-semibold text-white/45">Memory date</span>
                   <input
                     type="date"
                     value={memoryDate}
                     onChange={(e) => setMemoryDate(e.target.value)}
-                    className="rounded-xl border border-white/15 bg-white/10 px-3.5 py-2 text-base text-white [color-scheme:dark] focus:border-white/40 focus:outline-none sm:text-sm"
+                    className="rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-2.5 text-base text-white [color-scheme:dark] focus:border-white/35 focus:outline-none sm:text-sm"
                   />
                 </label>
                 <div className="ml-auto flex gap-2">
                   <button
                     type="button"
                     onClick={() => setEditing(false)}
-                    className="rounded-full px-4 py-2 text-sm text-white/70 transition hover:text-white"
+                    className="rounded-full px-5 py-2.5 text-sm text-white/60 transition hover:text-white"
                   >
                     Cancel
                   </button>
@@ -265,7 +263,7 @@ export default function Lightbox({
                     type="button"
                     onClick={save}
                     disabled={busy}
-                    className="rounded-full bg-white px-5 py-2 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-60"
+                    className="sheen rounded-full bg-white px-6 py-2.5 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-60"
                   >
                     {busy ? 'Saving…' : 'Save'}
                   </button>
@@ -273,39 +271,46 @@ export default function Lightbox({
               </div>
             </div>
           ) : (
-            <div className="space-y-1.5 text-white">
+            <div className="animate-fade space-y-2 text-white">
               {photo.caption && (
-                <p className="font-display text-lg leading-snug sm:text-xl">{photo.caption}</p>
+                <p className="display text-xl leading-snug sm:text-2xl">{photo.caption}</p>
               )}
-              <p className="text-sm text-white/65">{formatMemoryDate(photo.memory_date)}</p>
-              <p className="text-xs text-white/45">
-                Uploaded by {photo.uploaderName} · {formatTimestamp(photo.created_at)}
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.8125rem] text-white/55">
+                <span className="text-white/75">{formatMemoryDate(photo.memory_date)}</span>
+                <span className="text-white/25">&middot;</span>
+                <span>{photo.uploaderName}</span>
+                <span className="text-white/25">&middot;</span>
+                <span className="text-white/40">added {formatTimestamp(photo.created_at)}</span>
                 {photo.favoritedBy.length > 0 && (
                   <>
-                    {' · '}
-                    <span className="text-accent">
-                      Loved by {photo.favoritedBy.join(' & ')}
+                    <span className="text-white/25">&middot;</span>
+                    <span className="inline-flex items-center gap-1.5 text-accent">
+                      <HeartIcon filled width={11} height={11} />
+                      {photo.favoritedBy.join(' & ')}
                     </span>
                   </>
                 )}
-              </p>
+              </div>
             </div>
           )}
         </div>
       </div>
 
       {confirmDelete && (
-        <div className="animate-fade absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-5">
-          <div className="animate-zoom w-full max-w-sm rounded-2xl border border-line bg-surface p-6 text-center shadow-float">
-            <h3 className="font-display text-xl">Delete this memory?</h3>
-            <p className="mt-2 text-sm text-muted">
-              The photo will be removed for both of you. This cannot be undone.
+        <div className="animate-fade absolute inset-0 z-10 flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm">
+          <div className="card animate-zoom w-full max-w-sm p-7 text-center shadow-float">
+            <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-danger/10 text-danger">
+              <TrashIcon width={20} height={20} />
+            </span>
+            <h3 className="display text-xl">Delete this memory?</h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              It will be gone for both of you. This cannot be undone.
             </p>
-            <div className="mt-5 flex gap-3">
+            <div className="mt-6 flex gap-3">
               <button
                 type="button"
                 onClick={() => setConfirmDelete(false)}
-                className="flex-1 rounded-full border border-line px-4 py-2.5 text-sm font-medium transition hover:bg-surface-2"
+                className="flex-1 rounded-full border border-line px-4 py-3 text-sm font-medium transition hover:bg-surface-2"
               >
                 Keep it
               </button>
@@ -313,7 +318,7 @@ export default function Lightbox({
                 type="button"
                 onClick={remove}
                 disabled={busy}
-                className="flex-1 rounded-full bg-danger px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+                className="flex-1 rounded-full bg-danger px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
               >
                 {busy ? 'Deleting…' : 'Delete'}
               </button>
@@ -330,8 +335,8 @@ function IconButton({
   label,
   onClick,
   active = false,
-  activeClass = 'bg-accent/25 text-accent',
-  hoverClass = 'hover:bg-white/20',
+  activeClass = 'border-white/25 bg-white/20 text-white',
+  hoverClass = 'hover:bg-white/15 hover:text-white',
 }: {
   children: React.ReactNode;
   label: string;
@@ -347,8 +352,8 @@ function IconButton({
       aria-label={label}
       title={label}
       className={cn(
-        'inline-flex h-10 w-10 items-center justify-center rounded-full transition active:scale-90',
-        active ? activeClass : `bg-white/10 text-white/90 ${hoverClass}`,
+        'inline-flex h-10 w-10 items-center justify-center rounded-full border backdrop-blur-xl transition-all duration-300 active:scale-90',
+        active ? activeClass : `border-white/10 bg-white/5 text-white/80 ${hoverClass}`,
       )}
     >
       {children}
@@ -363,8 +368,8 @@ function NavButton({ side, onClick }: { side: 'left' | 'right'; onClick: () => v
       onClick={onClick}
       aria-label={side === 'left' ? 'Previous photo' : 'Next photo'}
       className={cn(
-        'absolute top-1/2 z-10 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 active:scale-90 sm:flex',
-        side === 'left' ? 'left-2' : 'right-2',
+        'absolute top-1/2 z-10 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white backdrop-blur-xl transition-all duration-300 hover:bg-white/15 active:scale-90 sm:flex',
+        side === 'left' ? 'left-3' : 'right-3',
       )}
     >
       {side === 'left' ? <ChevronLeftIcon /> : <ChevronRightIcon />}

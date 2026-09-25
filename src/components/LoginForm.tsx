@@ -9,10 +9,7 @@ import { signInAction, type ActionResult } from '@/lib/actions';
 export default function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
-    signInAction,
-    null,
-  );
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(signInAction, null);
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
@@ -23,12 +20,13 @@ export default function LoginForm() {
     }
   }, [state, params, router]);
 
+  const field =
+    'w-full rounded-2xl border border-line bg-bg/60 px-4 py-3.5 text-base transition-all duration-300 placeholder:text-muted/50 focus:border-accent/50 focus:bg-bg focus:outline-none focus:ring-4 focus:ring-[var(--ring)]';
+
   return (
     <form action={formAction} className="space-y-4">
       <label className="block">
-        <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-muted">
-          Email
-        </span>
+        <span className="tracked mb-2.5 block text-[0.625rem] font-semibold text-muted">Email</span>
         <input
           name="email"
           type="email"
@@ -36,26 +34,26 @@ export default function LoginForm() {
           inputMode="email"
           required
           autoFocus
-          className="w-full rounded-xl border border-line bg-bg px-4 py-3 text-base transition focus:border-accent focus:outline-none"
+          placeholder="you@example.com"
+          className={field}
         />
       </label>
 
       <label className="block">
-        <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-muted">
-          Password
-        </span>
+        <span className="tracked mb-2.5 block text-[0.625rem] font-semibold text-muted">Password</span>
         <div className="relative">
           <input
             name="password"
             type={showPassword ? 'text' : 'password'}
             autoComplete="current-password"
             required
-            className="w-full rounded-xl border border-line bg-bg py-3 pl-4 pr-16 text-base transition focus:border-accent focus:outline-none"
+            placeholder="••••••••"
+            className={`${field} pr-16`}
           />
           <button
             type="button"
             onClick={() => setShowPassword((v) => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted transition hover:text-accent"
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium text-muted transition-colors hover:text-accent"
           >
             {showPassword ? 'Hide' : 'Show'}
           </button>
@@ -63,7 +61,7 @@ export default function LoginForm() {
       </label>
 
       {state && !state.ok && (
-        <p role="alert" className="rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">
+        <p role="alert" className="animate-reveal rounded-2xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
           {state.error}
         </p>
       )}
@@ -71,13 +69,13 @@ export default function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3.5 text-sm font-medium text-accent-contrast shadow-soft transition hover:bg-accent-hover active:scale-[0.99] disabled:opacity-60"
+        className="sheen mt-2 flex w-full items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-br from-accent to-clay px-4 py-4 text-sm font-semibold tracking-wide text-white shadow-glow transition-all duration-300 hover:shadow-float active:scale-[0.99] disabled:opacity-60"
       >
         {pending ? (
           'Opening…'
         ) : (
           <>
-            <HeartIcon filled width={16} height={16} />
+            <HeartIcon filled width={15} height={15} />
             Come in
           </>
         )}

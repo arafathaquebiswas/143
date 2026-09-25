@@ -9,10 +9,12 @@ const body = Inter({
   variable: '--font-body',
 });
 
+// Variable so the SOFT and WONK axes are available: they are what give
+// Fraunces its warmth at display sizes.
 const heading = Fraunces({
   subsets: ['latin'],
   display: 'swap',
-  weight: ['400', '500', '600'],
+  axes: ['SOFT', 'WONK'],
   variable: '--font-heading',
 });
 
@@ -28,8 +30,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#fbf8f6' },
-    { media: '(prefers-color-scheme: dark)', color: '#12100f' },
+    { media: '(prefers-color-scheme: light)', color: '#fcfaf7' },
+    { media: '(prefers-color-scheme: dark)', color: '#100c0b' },
   ],
 };
 
@@ -51,7 +53,12 @@ const themeScript = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${body.variable} ${heading.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${body.variable} ${heading.variable}`}
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
