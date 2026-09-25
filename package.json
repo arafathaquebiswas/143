@@ -14,7 +14,9 @@
     "add-user": "node scripts/add-user.mjs",
     "e2e": "node scripts/e2e.mjs",
     "cleanup-orphans": "node scripts/cleanup-orphans.mjs",
-    "backup": "node scripts/backup.mjs"
+    "backup": "node scripts/backup.mjs",
+    "copy-password": "node scripts/copy-password.mjs",
+    "set-password": "node scripts/set-password.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
