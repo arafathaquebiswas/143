@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
+import DaysTogether from '@/components/DaysTogether';
 import PhotoBrowser from '@/components/PhotoBrowser';
 import SectionHeader from '@/components/SectionHeader';
 import { HeartIcon, StarIcon, UploadIcon } from '@/components/icons';
 import { getCounts, getPhotos, getSettings, getViewer } from '@/lib/photos';
-import { daysTogether, formatMemoryDate } from '@/lib/utils';
+import { daysTogether } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,20 +54,11 @@ export default async function HomePage() {
           </p>
         )}
 
-        {/* Days together */}
-        <div className="mx-auto mt-11 w-fit">
-          <div className="card px-10 py-7 shadow-card sm:px-14">
-            <p className="rose-text display text-[3.25rem] font-semibold leading-none tabular-nums sm:text-[4.25rem]">
-              {days.toLocaleString()}
-            </p>
-            <p className="tracked mt-3 text-[0.625rem] font-semibold text-muted">
-              {days === 1 ? 'day' : 'days'} together
-            </p>
-            <p className="mt-1.5 text-xs text-muted/70">
-              since {formatMemoryDate(settings.relationship_start_date)}
-            </p>
-          </div>
-        </div>
+        {/* Days together — counted in the viewer's timezone, see the component */}
+        <DaysTogether
+          startISO={settings.relationship_start_date}
+          serverDays={days}
+        />
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <Link
