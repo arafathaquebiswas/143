@@ -25,11 +25,14 @@ export default function PhotoComments({
   photoId,
   comments,
   onChange,
+  /** 'dark' sits on the photo viewer's glass; 'light' sits on a normal card. */
+  tone = 'dark',
 }: {
   photoId: string;
   comments: PhotoComment[];
   /** Hands the new list back up so the gallery keeps it after the viewer closes. */
   onChange: (next: PhotoComment[]) => void;
+  tone?: 'dark' | 'light';
 }) {
   // Existing notes are shown straight away; an empty thread stays collapsed
   // so the viewer is not cluttered for photos nobody has written on.
@@ -101,26 +104,49 @@ export default function PhotoComments({
     });
   };
 
-  const field =
-    'w-full resize-none rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-3 text-base text-white placeholder:text-white/30 focus:border-white/35 focus:outline-none sm:text-sm';
+  const light = tone === 'light';
+
+  const field = light
+    ? 'w-full resize-none rounded-2xl border border-line bg-bg/60 px-4 py-3 text-base placeholder:text-muted/50 focus:border-accent/50 focus:outline-none sm:text-sm'
+    : 'w-full resize-none rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-3 text-base text-white placeholder:text-white/30 focus:border-white/35 focus:outline-none sm:text-sm';
+
+  const t = {
+    wrap: light ? 'mt-3 border-t border-line pt-3' : 'mt-3.5 border-t border-white/10 pt-3.5',
+    toggle: light
+      ? 'inline-flex min-h-11 items-center gap-2.5 rounded-full border border-line bg-surface/70 px-4 py-2.5 text-xs font-semibold text-muted transition-all duration-300 hover:border-accent/40 hover:text-accent'
+      : 'inline-flex min-h-11 items-center gap-2.5 rounded-full border border-white/20 bg-white/10 px-5 py-3 text-[0.8125rem] font-semibold text-white/90 backdrop-blur-xl transition-all duration-300 hover:border-white/35 hover:bg-white/20 hover:text-white',
+    chev: light ? 'text-muted/60' : 'text-white/40',
+    mine: light ? 'border-accent/25 bg-accent-soft' : 'border-accent/25 bg-accent/10',
+    theirs: light ? 'border-line bg-surface-2/60' : 'border-white/10 bg-white/[0.05]',
+    nameMine: light ? 'text-accent' : 'text-accent',
+    nameTheirs: light ? 'text-ink' : 'text-white/80',
+    stamp: light ? 'text-muted/70' : 'text-white/35',
+    body: light ? 'text-ink-soft' : 'text-white/85',
+    action: light ? 'text-muted hover:text-ink' : 'text-white/45 hover:text-white',
+    bin: light ? 'text-muted hover:text-danger' : 'text-white/40 hover:text-danger',
+    cancel: light ? 'text-muted hover:text-ink' : 'text-white/60 hover:text-white',
+    save: light
+      ? 'rounded-full bg-gradient-to-br from-accent to-clay px-4 py-1.5 text-xs font-medium text-white transition disabled:opacity-50'
+      : 'rounded-full bg-white px-4 py-1.5 text-xs font-medium text-black transition hover:bg-white/90 disabled:opacity-50',
+    send: light
+      ? 'min-h-11 shrink-0 rounded-full bg-gradient-to-br from-accent to-clay px-5 py-3 text-sm font-semibold text-white transition-all duration-300 active:scale-95 disabled:opacity-40'
+      : 'min-h-11 shrink-0 rounded-full bg-gradient-to-br from-accent to-clay px-5 py-3 text-sm font-semibold text-white transition-all duration-300 active:scale-95 disabled:opacity-40',
+  };
 
   return (
-    <div className="mt-3.5 border-t border-white/10 pt-3.5">
+    <div className={t.wrap}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="inline-flex min-h-11 items-center gap-2.5 rounded-full border border-white/20 bg-white/10 px-5 py-3 text-[0.8125rem] font-semibold text-white/90 backdrop-blur-xl transition-all duration-300 hover:border-white/35 hover:bg-white/20 hover:text-white"
+        className={t.toggle}
       >
         <ChatIcon width={15} height={15} />
         {comments.length === 0
           ? 'Leave a note'
           : `${comments.length} ${comments.length === 1 ? 'note' : 'notes'}`}
         <span
-          className={cn(
-            'text-white/40 transition-transform duration-300',
-            open && 'rotate-180',
-          )}
+          className={cn(t.chev, 'transition-transform duration-300', open && 'rotate-180')}
           aria-hidden
         >
           &#9662;
@@ -136,21 +162,19 @@ export default function PhotoComments({
                   key={c.id}
                   className={cn(
                     'group rounded-2xl border px-3.5 py-2.5',
-                    c.isMine
-                      ? 'border-accent/25 bg-accent/10'
-                      : 'border-white/10 bg-white/[0.05]',
+                    c.isMine ? t.mine : t.theirs,
                   )}
                 >
                   <div className="flex items-baseline gap-2">
                     <span
                       className={cn(
                         'text-xs font-semibold',
-                        c.isMine ? 'text-accent' : 'text-white/80',
+                        c.isMine ? t.nameMine : t.nameTheirs,
                       )}
                     >
                       {c.isMine ? 'You' : c.authorName}
                     </span>
-                    <span className="text-[0.625rem] text-white/35">{ago(c.created_at)}</span>
+                    <span className={cn('text-[0.625rem]', t.stamp)}>{ago(c.created_at)}</span>
 
                     {c.isMine && editingId !== c.id && (
                       <span className="ml-auto flex items-center gap-1">
@@ -160,7 +184,7 @@ export default function PhotoComments({
                             setEditingId(c.id);
                             setEditDraft(c.body);
                           }}
-                          className="rounded-full px-2 py-1 text-[0.625rem] text-white/45 transition hover:text-white"
+                          className={cn('rounded-full px-2 py-1 text-[0.625rem] transition', t.action)}
                         >
                           Edit
                         </button>
@@ -169,7 +193,7 @@ export default function PhotoComments({
                           onClick={() => remove(c.id)}
                           disabled={pending}
                           aria-label="Remove your note"
-                          className="rounded-full p-1.5 text-white/40 transition hover:text-danger disabled:opacity-50"
+                          className={cn('rounded-full p-1.5 transition disabled:opacity-50', t.bin)}
                         >
                           <TrashIcon width={13} height={13} />
                         </button>
@@ -190,7 +214,7 @@ export default function PhotoComments({
                         <button
                           type="button"
                           onClick={() => setEditingId(null)}
-                          className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs text-white/60 transition hover:text-white"
+                          className={cn('inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs transition', t.cancel)}
                         >
                           <CloseIcon width={12} height={12} />
                           Cancel
@@ -199,14 +223,14 @@ export default function PhotoComments({
                           type="button"
                           onClick={() => saveEdit(c.id)}
                           disabled={pending || !editDraft.trim()}
-                          className="rounded-full bg-white px-4 py-1.5 text-xs font-medium text-black transition hover:bg-white/90 disabled:opacity-50"
+                          className={t.save}
                         >
                           {pending ? 'Saving…' : 'Save'}
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <p className="mt-1 whitespace-pre-wrap break-words text-[0.8125rem] leading-relaxed text-white/85">
+                    <p className={cn('mt-1 whitespace-pre-wrap break-words text-[0.8125rem] leading-relaxed', t.body)}>
                       {c.body}
                     </p>
                   )}
@@ -237,7 +261,7 @@ export default function PhotoComments({
               type="button"
               onClick={post}
               disabled={pending || !draft.trim()}
-              className="min-h-11 shrink-0 rounded-full bg-gradient-to-br from-accent to-clay px-5 py-3 text-sm font-semibold text-white transition-all duration-300 active:scale-95 disabled:opacity-40"
+              className={t.send}
             >
               {pending ? '…' : 'Send'}
             </button>

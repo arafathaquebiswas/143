@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { BUCKET } from '@/lib/constants';
 import { getPhotos } from '@/lib/photos';
-import type { Photo, PhotoComment, PhotoFilter } from '@/lib/types';
+import type { Collection, Photo, PhotoComment, PhotoFilter } from '@/lib/types';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -101,7 +101,10 @@ export type NewPhotoInput = {
  * Called once after the browser has finished uploading the image bytes
  * directly to Storage. Writes the metadata rows for the whole batch.
  */
-export async function createPhotosAction(items: NewPhotoInput[]): Promise<ActionResult> {
+export async function createPhotosAction(
+  items: NewPhotoInput[],
+  collection: Collection = 'moment',
+): Promise<ActionResult & { ids?: string[] }> {
   try {
     const { supabase, user } = await requireViewer();
     if (items.length === 0) return { ok: false, error: 'No photos to save.' };
@@ -119,11 +122,12 @@ export async function createPhotosAction(items: NewPhotoInput[]): Promise<Action
       original_name: item.original_name,
     }));
 
-    const { error } = await supabase.from('photos').insert(rows);
+    const withCollection = rows.map((r) => ({ ...r, collection }));
+    const { data, error } = await supabase.from('photos').insert(withCollection).select('id');
     if (error) return { ok: false, error: error.message };
 
     revalidateAll();
-    return { ok: true };
+    return { ok: true, ids: (data ?? []).map((r) => r.id) };
   } catch (e) {
     return { ok: false, error: message(e) };
   }
@@ -335,6 +339,109 @@ export async function deleteCommentAction(id: string): Promise<ActionResult> {
     if (error) return { ok: false, error: error.message };
     if (!data || data.length === 0) return { ok: false, error: 'You can only remove your own comments.' };
 
+    revalidateAll();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Collections: Our Moments and Recreate Someday
+// ---------------------------------------------------------------------------
+
+/**
+ * Moves one item between the two collections. Nothing is copied and no file is
+ * touched — only the row's collection changes, so storage can never end up
+ * with duplicates or orphans.
+ */
+export async function moveToCollectionAction(
+  id: string,
+  collection: Collection,
+  memoryDate?: string,
+): Promise<ActionResult> {
+  try {
+    const { supabase } = await requireViewer();
+
+    const update: Record<string, unknown> = { collection };
+
+    // A real memory needs a date it actually happened.
+    if (collection === 'moment' && memoryDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(memoryDate)) {
+        return { ok: false, error: 'Please give a valid date for the memory.' };
+      }
+      update.memory_date = memoryDate;
+    }
+
+    // Going back to inspiration clears any recreation link.
+    if (collection === 'inspiration') {
+      update.recreated_photo_id = null;
+      update.recreated_at = null;
+    }
+
+    const { data, error } = await supabase.from('photos').update(update).eq('id', id).select('id');
+    if (error) return { ok: false, error: error.message };
+    if (!data?.length) return { ok: false, error: 'That item no longer exists.' };
+
+    revalidateAll();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/**
+ * Links an inspiration to the real memory we made of it and marks it
+ * recreated. The inspiration picture itself is never copied into Our Moments —
+ * the newly uploaded photo is the memory, and the inspiration stays put as the
+ * "before" half of the pair.
+ */
+export async function markRecreatedAction(
+  inspirationId: string,
+  recreatedPhotoId: string,
+): Promise<ActionResult> {
+  try {
+    const { supabase } = await requireViewer();
+
+    const { data: pair } = await supabase
+      .from('photos')
+      .select('id, collection')
+      .in('id', [inspirationId, recreatedPhotoId]);
+
+    const inspiration = pair?.find((r) => r.id === inspirationId);
+    const memory = pair?.find((r) => r.id === recreatedPhotoId);
+
+    if (!inspiration || !memory) return { ok: false, error: 'Could not find both items.' };
+    if (inspiration.collection !== 'inspiration') {
+      return { ok: false, error: 'That item is not in Recreate Someday.' };
+    }
+    if (memory.collection !== 'moment') {
+      return { ok: false, error: 'The recreated photo must be an Our Moment.' };
+    }
+
+    const { error } = await supabase
+      .from('photos')
+      .update({ recreated_photo_id: recreatedPhotoId, recreated_at: new Date().toISOString() })
+      .eq('id', inspirationId);
+
+    if (error) return { ok: false, error: error.message };
+
+    revalidateAll();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** Puts a recreated inspiration back on the to-do list. */
+export async function unmarkRecreatedAction(inspirationId: string): Promise<ActionResult> {
+  try {
+    const { supabase } = await requireViewer();
+    const { error } = await supabase
+      .from('photos')
+      .update({ recreated_photo_id: null, recreated_at: null })
+      .eq('id', inspirationId);
+    if (error) return { ok: false, error: error.message };
     revalidateAll();
     return { ok: true };
   } catch (e) {

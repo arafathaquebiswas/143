@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   ChevronLeftIcon,
+  SparkleIcon,
   ChevronRightIcon,
   CloseIcon,
   EditIcon,
@@ -14,7 +15,8 @@ import {
 import PhotoComments from '@/components/PhotoComments';
 import PhotoEditor from '@/components/PhotoEditor';
 import type { Photo, PhotoComment } from '@/lib/types';
-import { cn, formatMemoryDate, formatTimestamp } from '@/lib/utils';
+import { moveToCollectionAction } from '@/lib/actions';
+import { cn, formatMemoryDate, formatTimestamp, todayISO } from '@/lib/utils';
 
 export type LightboxProps = {
   photos: Photo[];
@@ -27,6 +29,9 @@ export type LightboxProps = {
   onDelete: (photo: Photo) => Promise<void>;
   onImageEdited: (photo: Photo, size: { width: number; height: number; size_bytes: number }) => void;
   onCommentsChanged: (photo: Photo, comments: PhotoComment[]) => void;
+  /** Called after a successful move. Drops the item from THIS list only —
+   *  it must never delete the photo or its files. */
+  onMoved?: (photo: Photo) => void;
 };
 
 export default function Lightbox({
@@ -40,12 +45,16 @@ export default function Lightbox({
   onDelete,
   onImageEdited,
   onCommentsChanged,
+  onMoved,
 }: LightboxProps) {
   const photo = photos[index];
 
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingImage, setEditingImage] = useState(false);
+  const [confirmMove, setConfirmMove] = useState(false);
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [direction, setDirection] = useState(0);
 
@@ -161,6 +170,11 @@ export default function Lightbox({
           <IconButton label="Edit photo & details" onClick={() => setEditingImage(true)} active={editingImage}>
             <EditIcon width={18} height={18} />
           </IconButton>
+          {photo.collection === 'moment' && (
+            <IconButton label="Move to Recreate Someday" onClick={() => setConfirmMove(true)}>
+              <SparkleIcon width={18} height={18} />
+            </IconButton>
+          )}
           <IconButton label="Delete this photo" onClick={() => setConfirmDelete(true)} hoverClass="hover:bg-danger/25 hover:text-danger">
             <TrashIcon width={18} height={18} />
           </IconButton>
@@ -226,6 +240,35 @@ export default function Lightbox({
               </div>
           </div>
 
+          {photo.collection === 'inspiration' && photo.recreated && (
+            <div className="mt-3.5 border-t border-white/10 pt-3.5">
+              <p className="tracked mb-2.5 text-[0.5625rem] font-semibold text-white/45">
+                The inspiration &rarr; our recreation
+              </p>
+              <div className="flex gap-2.5">
+                {[
+                  { url: photo.thumbUrl, label: 'Inspiration', tone: 'border-white/20' },
+                  { url: photo.recreated.thumbUrl, label: 'Ours', tone: 'border-accent/50' },
+                ].map((half) => (
+                  <figure key={half.label} className="min-w-0 flex-1">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={half.url}
+                      alt={half.label}
+                      className={cn('aspect-4/5 w-full rounded-xl border object-cover', half.tone)}
+                    />
+                    <figcaption className="mt-1.5 text-center text-[0.625rem] font-medium text-white/60">
+                      {half.label}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+              <p className="mt-2 text-center text-[0.6875rem] text-white/40">
+                Recreated on {formatMemoryDate(photo.recreated.memory_date)}
+              </p>
+            </div>
+          )}
+
           <PhotoComments
             photoId={photo.id}
             comments={photo.comments ?? []}
@@ -244,6 +287,55 @@ export default function Lightbox({
             if (image) onImageEdited(photo, image);
           }}
         />
+      )}
+
+      {confirmMove && (
+        <div className="animate-fade absolute inset-0 z-10 flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm">
+          <div className="card animate-zoom w-full max-w-sm p-7 text-center">
+            <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gold-soft text-gold">
+              <SparkleIcon width={20} height={20} />
+            </span>
+            <h3 className="display text-xl">Move to Recreate Someday?</h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              It leaves Our Moments and becomes something to recreate later. The photo itself is
+              not copied and nothing is left behind in storage.
+            </p>
+            {moveError && (
+              <p role="alert" className="mt-4 rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">
+                {moveError}
+              </p>
+            )}
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setMoveError(null); setConfirmMove(false); }}
+                className="flex-1 rounded-full border border-line px-4 py-3 text-sm font-medium transition hover:bg-surface-2"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={moveBusy}
+                onClick={async () => {
+                  setMoveBusy(true);
+                  const r = await moveToCollectionAction(photo.id, 'inspiration');
+                  setMoveBusy(false);
+                  setConfirmMove(false);
+                  if (r.ok) {
+                    // Deliberately NOT onDelete: the photo must survive the
+                    // move. This only takes it out of the list on screen.
+                    onMoved?.(photo);
+                  } else {
+                    setMoveError(r.error);
+                  }
+                }}
+                className="flex-1 rounded-full bg-gradient-to-br from-accent to-clay px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-60"
+              >
+                {moveBusy ? 'Moving…' : 'Move it'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmDelete && (

@@ -248,6 +248,13 @@ export default function PhotoBrowser({
       {openIndex !== null && items[openIndex] && (
         <Lightbox
           onCommentsChanged={applyComments}
+          onMoved={(photo) => {
+            // The photo still exists, it simply belongs to the other
+            // collection now, so it leaves this view without being deleted.
+            const left = items.filter((p) => p.id !== photo.id);
+            setItems(left);
+            setOpenIndex((i) => (i === null || left.length === 0 ? null : Math.min(i, left.length - 1)));
+          }}
           photos={items}
           index={openIndex}
           onIndexChange={setOpenIndex}

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import CameraCapture from '@/components/CameraCapture';
 import { CameraIcon, CheckIcon, CloseIcon, StarIcon, UploadIcon } from '@/components/icons';
-import { createPhotosAction, type NewPhotoInput } from '@/lib/actions';
+import { createPhotosAction, markRecreatedAction, type NewPhotoInput } from '@/lib/actions';
 import {
   ACCEPTED_IMAGE_TYPES,
   BUCKET,
@@ -16,6 +16,7 @@ import {
   THUMB_MAX_MB,
 } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/client';
+import type { Collection } from '@/lib/types';
 import { cn, formatBytes, todayISO } from '@/lib/utils';
 
 type Status = 'ready' | 'working' | 'done' | 'failed';
@@ -30,12 +31,22 @@ type Item = {
   error?: string;
 };
 
-export default function UploadClient({ userId }: { userId: string }) {
+export default function UploadClient({
+  userId,
+  /** When set, this upload becomes the real memory for that inspiration. */
+  recreateFor,
+  recreateCaption,
+}: {
+  userId: string;
+  recreateFor?: string;
+  recreateCaption?: string | null;
+}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   /** Native camera picker — the fallback where live capture is unavailable. */
   const nativeCameraRef = useRef<HTMLInputElement>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [collection, setCollection] = useState<Collection>('moment');
   const [cameraSupported, setCameraSupported] = useState(false);
 
   const [items, setItems] = useState<Item[]>([]);
@@ -180,14 +191,26 @@ export default function UploadClient({ userId }: { userId: string }) {
     }
 
     if (saved.length > 0) {
-      const result = await createPhotosAction(saved);
+      // In recreate mode the new photo is always a real memory.
+      const target: Collection = recreateFor ? 'moment' : collection;
+      const result = await createPhotosAction(saved, target);
       if (!result.ok) {
         setNotice(`Photos uploaded but could not be saved: ${result.error}`);
         setBusy(false);
         return;
       }
+
+      if (recreateFor && result.ids?.length) {
+        const link = await markRecreatedAction(recreateFor, result.ids[0]);
+        if (!link.ok) {
+          setNotice(`Saved, but could not link it to the inspiration: ${link.error}`);
+          setBusy(false);
+          return;
+        }
+      }
+
       router.refresh();
-      router.push('/gallery');
+      router.push(recreateFor ? '/recreate' : target === 'inspiration' ? '/recreate' : '/gallery');
       return;
     }
 
@@ -200,6 +223,22 @@ export default function UploadClient({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-6">
+      {recreateFor && (
+        <div className="card animate-reveal flex items-start gap-3.5 border-accent/30 bg-accent-soft/50 p-5">
+          <span className="mt-0.5 shrink-0 text-accent">
+            <StarIcon filled width={18} height={18} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink">Recreating an inspiration</p>
+            <p className="mt-1 text-sm leading-relaxed text-muted">
+              {recreateCaption
+                ? `"${recreateCaption}" becomes a real memory once you add your photo.`
+                : 'Your photo becomes a real memory in Our Moments, and the original stays in Recreate Someday as the before.'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {cameraOpen && (
         <CameraCapture
           onCancel={() => setCameraOpen(false)}
@@ -233,7 +272,35 @@ export default function UploadClient({ userId }: { userId: string }) {
         <span className="animate-breathe mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-accent/15 to-clay/10 text-accent ring-1 ring-accent/15">
           <CameraIcon width={26} height={26} />
         </span>
-        <h2 className="display text-2xl">Add a memory</h2>
+        <h2 className="display text-2xl">
+          {recreateFor ? 'Your recreation' : 'Add a memory'}
+        </h2>
+
+        {/* Which collection is this going into? Hidden in recreate mode,
+            where the answer is always Our Moments. */}
+        {!recreateFor && (
+          <div className="mx-auto mt-6 inline-flex rounded-full border border-line bg-surface/60 p-1 backdrop-blur-xl">
+            {([
+              { key: 'moment', label: 'Our Moment', hint: 'It happened' },
+              { key: 'inspiration', label: 'Recreate Someday', hint: 'For later' },
+            ] as const).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setCollection(opt.key)}
+                aria-pressed={collection === opt.key}
+                className={cn(
+                  'min-h-11 rounded-full px-5 py-2.5 text-[0.8125rem] font-semibold transition-all duration-300',
+                  collection === opt.key
+                    ? 'bg-gradient-to-br from-accent to-clay text-white shadow-soft'
+                    : 'text-muted hover:text-ink',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="mx-auto mt-6 flex max-w-md flex-col gap-3 sm:flex-row">
           <button
@@ -260,7 +327,11 @@ export default function UploadClient({ userId }: { userId: string }) {
         </div>
 
         <p className="mx-auto mt-4 max-w-sm text-sm text-muted">
-          Take one now or choose from your gallery
+          {recreateFor
+            ? 'Take or choose the photo the two of you just made'
+            : collection === 'inspiration'
+              ? 'Save a picture you would like us to recreate someday'
+              : 'Take one now or choose from your gallery'}
         </p>
         <p className="mx-auto mt-1.5 max-w-sm text-xs text-muted/70">
           Photos are resized on your phone first, so uploads stay quick even on a slow connection.
@@ -308,7 +379,7 @@ export default function UploadClient({ userId }: { userId: string }) {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="tracked mb-2.5 block text-[0.625rem] font-semibold text-muted">
-                  When did it happen?
+                  {collection === 'inspiration' && !recreateFor ? 'Date added' : 'When did it happen?'}
                 </span>
                 <input
                   type="date"

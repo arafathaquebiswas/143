@@ -1,3 +1,6 @@
+/** Which of the two collections a row belongs to. */
+export type Collection = 'moment' | 'inspiration';
+
 /** A row exactly as it is stored in public.photos. */
 export type PhotoRow = {
   id: string;
@@ -13,6 +16,12 @@ export type PhotoRow = {
   original_name: string | null;
   created_at: string;
   updated_at: string;
+  /** 'moment' = it happened. 'inspiration' = we want to recreate it. */
+  collection: Collection;
+  /** On an inspiration: the real memory we made when we recreated it. */
+  recreated_photo_id: string | null;
+  /** When it was marked recreated. Outlives the link if that memory is deleted. */
+  recreated_at: string | null;
 };
 
 /** One comment on a photo. */
@@ -41,6 +50,8 @@ export type Photo = PhotoRow & {
   isFavorite: boolean;
   /** Comments on this photo, oldest first. */
   comments: PhotoComment[];
+  /** On a recreated inspiration: the memory it became, for the before/after. */
+  recreated?: { id: string; url: string; thumbUrl: string; caption: string | null; memory_date: string } | null;
 };
 
 export type Person = {
@@ -55,6 +66,10 @@ export type AppSettings = {
 };
 
 export type PhotoFilter = {
+  /** Defaults to 'moment' everywhere, so existing views are unchanged. */
+  collection?: Collection;
+  /** Inspirations only: true = still to do, false = already recreated. */
+  pendingOnly?: boolean;
   year?: number;
   month?: number; // 1-12
   specialOnly?: boolean;

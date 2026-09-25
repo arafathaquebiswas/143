@@ -65,6 +65,8 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
   if (!user) return [];
 
   const {
+    collection = 'moment',
+    pendingOnly,
     year,
     month,
     specialOnly = false,
@@ -92,6 +94,12 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
       ? query.order('created_at', { ascending: false })
       : query.order('memory_date', { ascending: false }).order('created_at', { ascending: false });
 
+  query = query.eq('collection', collection);
+
+  // Inspirations split into "still to do" and "already recreated".
+  if (pendingOnly === true) query = query.is('recreated_at', null);
+  if (pendingOnly === false) query = query.not('recreated_at', 'is', null);
+
   if (specialOnly) query = query.eq('is_special', true);
 
   if (year) {
@@ -110,7 +118,39 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
     query = query.in('id', ids);
   }
 
-  const { data, error } = await query;
+  let { data, error } = await query;
+
+  // Until supabase/add-collections.sql has been run the collection columns do
+  // not exist yet. Rather than take the whole album down, fall back to the
+  // pre-collections behaviour: everything is an Our Moment.
+  if (error && isMissingCollectionColumn(error)) {
+    if (collection === 'inspiration') return [];
+
+    let retry = supabase
+      .from('photos')
+      .select('*, uploader:allowed_users!photos_uploader_id_fkey(display_name)')
+      .range(offset, offset + limit - 1);
+
+    retry =
+      sort === 'created'
+        ? retry.order('created_at', { ascending: false })
+        : retry.order('memory_date', { ascending: false }).order('created_at', { ascending: false });
+
+    if (specialOnly) retry = retry.eq('is_special', true);
+    if (year) {
+      const from = month ? `${year}-${String(month).padStart(2, '0')}-01` : `${year}-01-01`;
+      const to = month ? nextMonthStart(year, month) : `${year + 1}-01-01`;
+      retry = retry.gte('memory_date', from).lt('memory_date', to);
+    }
+    if (favoritesOnly) {
+      const ids = [...new Set(favorites.map((f) => f.photo_id))];
+      if (ids.length === 0) return [];
+      retry = retry.in('id', ids);
+    }
+
+    ({ data, error } = await retry);
+  }
+
   if (error) throw new Error(`Could not load photos: ${error.message}`);
 
   const rows = (data ?? []) as PhotoQueryRow[];
@@ -126,8 +166,19 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
     .in('photo_id', rows.map((r) => r.id))
     .order('created_at');
 
+  // For recreated inspirations, fetch the memory each one became so the
+  // viewer can show inspiration -> our recreation side by side.
+  const partnerIds = rows.map((r) => r.recreated_photo_id).filter(Boolean) as string[];
+  const { data: partnerRows } = partnerIds.length
+    ? await supabase
+        .from('photos')
+        .select('id, storage_path, thumb_path, caption, memory_date')
+        .in('id', partnerIds)
+    : { data: [] as { id: string; storage_path: string; thumb_path: string; caption: string | null; memory_date: string }[] };
+
   // One batched signing call for every thumbnail and full-size image.
   const paths = rows.flatMap((r) => [r.thumb_path, r.storage_path]);
+  for (const pr of partnerRows ?? []) paths.push(pr.thumb_path, pr.storage_path);
   const signed = await signPaths(paths);
 
   return rows.map((row) => {
@@ -151,6 +202,18 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
           created_at: c.created_at,
           isMine: c.author_id === user.id,
         })),
+      recreated: (() => {
+        if (!row.recreated_photo_id) return null;
+        const pr = (partnerRows ?? []).find((x) => x.id === row.recreated_photo_id);
+        if (!pr) return null;
+        return {
+          id: pr.id,
+          url: signed.get(pr.storage_path) ?? '',
+          thumbUrl: signed.get(pr.thumb_path) ?? '',
+          caption: pr.caption,
+          memory_date: pr.memory_date,
+        };
+      })(),
     } satisfies Photo;
   });
 }
@@ -159,26 +222,52 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
 export async function getCounts() {
   const supabase = await createClient();
 
-  const [photos, special, favorites] = await Promise.all([
-    supabase.from('photos').select('id', { count: 'exact', head: true }),
-    supabase.from('photos').select('id', { count: 'exact', head: true }).eq('is_special', true),
+  const safe = async <T,>(p: PromiseLike<{ count: number | null; error: unknown }>) => {
+    const r = await p;
+    return isMissingCollectionColumn(r.error) ? { count: null } : r;
+  };
+
+  const [photos, special, favorites, pending, recreated] = await Promise.all([
+    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'moment')),
+    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'moment').eq('is_special', true)),
     supabase.from('favorites').select('photo_id', { count: 'exact', head: true }),
+    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'inspiration').is('recreated_at', null)),
+    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'inspiration').not('recreated_at', 'is', null)),
   ]);
 
+  // Before the migration the collection counts are unknown; fall back to the
+  // plain totals so the homepage still reads correctly.
+  const totals = photos.count === null
+    ? await supabase.from('photos').select('id', { count: 'exact', head: true })
+    : null;
+  const totalSpecial = special.count === null
+    ? await supabase.from('photos').select('id', { count: 'exact', head: true }).eq('is_special', true)
+    : null;
+
   return {
-    photos: photos.count ?? 0,
-    special: special.count ?? 0,
+    photos: photos.count ?? totals?.count ?? 0,
+    special: special.count ?? totalSpecial?.count ?? 0,
     favorites: favorites.count ?? 0,
+    pendingInspirations: pending.count ?? 0,
+    recreatedInspirations: recreated.count ?? 0,
   };
 }
 
 /** Distinct years that actually have memories in them, newest first. */
 export async function getYearsWithMemories(): Promise<number[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  let { data, error } = await supabase
     .from('photos')
     .select('memory_date')
+    .eq('collection', 'moment')
     .order('memory_date', { ascending: false });
+
+  if (error && isMissingCollectionColumn(error)) {
+    ({ data } = await supabase
+      .from('photos')
+      .select('memory_date')
+      .order('memory_date', { ascending: false }));
+  }
 
   const years = new Set<number>();
   for (const row of data ?? []) years.add(Number(row.memory_date.slice(0, 4)));
@@ -203,6 +292,13 @@ async function signPaths(paths: string[]): Promise<Map<string, string>> {
     }
   }
   return result;
+}
+
+/** True when the query failed only because add-collections.sql has not run. */
+function isMissingCollectionColumn(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { code, message } = error as { code?: string; message?: string };
+  return code === '42703' || /column .*(collection|recreated_at|recreated_photo_id)/i.test(message ?? '');
 }
 
 function nextMonthStart(year: number, month: number): string {

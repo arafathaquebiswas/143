@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import DaysTogether from '@/components/DaysTogether';
 import PhotoBrowser from '@/components/PhotoBrowser';
 import SectionHeader from '@/components/SectionHeader';
-import { HeartIcon, StarIcon, UploadIcon } from '@/components/icons';
+import { HeartIcon, SparkleIcon, StarIcon, UploadIcon } from '@/components/icons';
 import { getCounts, getPhotos, getSettings, getViewer } from '@/lib/photos';
 import { daysTogether } from '@/lib/utils';
 
@@ -14,12 +14,13 @@ export default async function HomePage() {
   const viewer = await getViewer();
   if (!viewer) redirect('/login');
 
-  const [settings, counts, special, recent, favorites] = await Promise.all([
+  const [settings, counts, special, recent, favorites, someday] = await Promise.all([
     getSettings(),
     getCounts(),
     getPhotos({ specialOnly: true, limit: 4 }),
     getPhotos({ sort: 'created', limit: 12 }),
     getPhotos({ favoritesOnly: true, limit: 12 }),
+    getPhotos({ collection: 'inspiration', pendingOnly: true, sort: 'created', limit: 6 }),
   ]);
 
   const days = daysTogether(settings.relationship_start_date);
@@ -70,9 +71,17 @@ export default async function HomePage() {
           </Link>
           <Link
             href="/timeline"
-            className="inline-flex items-center gap-2 rounded-full border border-line/70 bg-surface/60 px-7 py-3.5 text-sm font-medium backdrop-blur-xl transition-all duration-300 hover:border-accent/40 hover:text-accent"
+            className="inline-flex items-center gap-2 rounded-full border border-line/70 bg-surface/60 px-6 py-3.5 text-sm font-medium backdrop-blur-xl transition-all duration-300 hover:border-accent/40 hover:text-accent"
           >
-            Our timeline
+            <HeartIcon filled width={14} height={14} />
+            Our Moments
+          </Link>
+          <Link
+            href="/recreate"
+            className="inline-flex items-center gap-2 rounded-full border border-line/70 bg-surface/60 px-6 py-3.5 text-sm font-medium backdrop-blur-xl transition-all duration-300 hover:border-gold/50 hover:text-gold"
+          >
+            <SparkleIcon width={14} height={14} />
+            Recreate Someday
           </Link>
         </div>
       </section>
@@ -112,6 +121,41 @@ export default async function HomePage() {
           emptyHint="Upload your first photo and this page will come alive."
         />
       </section>
+
+      {/* ------------------------------------------------ Recreate Someday */}
+      {someday.length > 0 && (
+        <section>
+          <SectionHeader
+            eyebrow="Recreate Someday"
+            title="Things we want to recreate"
+            hint="Pictures we would like to make our own one day."
+            href="/recreate"
+          />
+          <div className="no-scrollbar -mx-5 flex snap-x snap-mandatory gap-3.5 overflow-x-auto px-5 pb-2 sm:mx-0 sm:px-0">
+            {someday.map((item, i) => (
+              <Link
+                key={item.id}
+                href="/recreate"
+                className="group relative w-[9.5rem] shrink-0 snap-start overflow-hidden rounded-[1.375rem] ring-1 ring-line/60 transition-all duration-500 hover:-translate-y-1 hover:ring-gold/30 sm:w-[12rem]"
+                style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.thumbUrl}
+                  alt={item.caption ?? 'An inspiration'}
+                  loading="lazy"
+                  className="aspect-4/5 w-full bg-surface-2 object-cover transition-transform duration-700 group-hover:scale-[1.05]"
+                />
+                <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2.5 pt-10">
+                  <span className="line-clamp-2 block text-[0.75rem] font-medium leading-snug text-white">
+                    {item.caption || 'Let us recreate this'}
+                  </span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* -------------------------------------------------------- Favorites */}
       {favorites.length > 0 && (

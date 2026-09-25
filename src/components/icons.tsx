@@ -226,3 +226,12 @@ export function ChatIcon({ filled = false, ...props }: IconProps & { filled?: bo
     </svg>
   );
 }
+
+export function SparkleIcon({ filled = false, ...props }: IconProps & { filled?: boolean }) {
+  return (
+    <svg {...base} {...props} fill={filled ? 'currentColor' : 'none'}>
+      <path d="M12 3.5 13.6 9l5.4 1.6-5.4 1.6L12 17.6l-1.6-5.4L5 10.6 10.4 9 12 3.5Z" />
+      <path d="M18.5 15.5l.7 2.2 2.3.8-2.3.8-.7 2.2-.7-2.2-2.3-.8 2.3-.8.7-2.2Z" />
+    </svg>
+  );
+}
