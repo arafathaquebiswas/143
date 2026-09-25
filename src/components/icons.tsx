@@ -218,3 +218,11 @@ export function CropIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ChatIcon({ filled = false, ...props }: IconProps & { filled?: boolean }) {
+  return (
+    <svg {...base} {...props} fill={filled ? 'currentColor' : 'none'}>
+      <path d="M20.5 11.5a7.5 7.5 0 0 1-7.5 7.5c-1.1 0-2.2-.2-3.1-.7L4.5 20l1.4-4.2A7.5 7.5 0 1 1 20.5 11.5Z" />
+    </svg>
+  );
+}

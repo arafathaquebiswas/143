@@ -50,6 +50,35 @@ const TINY_JPEG = Buffer.from(
   'base64',
 );
 
+// ---------------------------------------------------------------------------
+// Before anything else: clear rows left behind by a previous run that crashed
+// part-way. This suite runs against the real album, so it must never
+// accumulate fixtures. Matching is deliberately narrow — a caption AND a
+// filename this suite is known to use — so real photos can never be caught.
+// ---------------------------------------------------------------------------
+const FIXTURE_CAPTIONS = [
+  'Test memory 1', 'Test memory 2', 'Test memory 3',
+  'Edited by the other person', 'Live deployment test',
+];
+const FIXTURE_FILENAMES = ['test1.jpg', 'test2.jpg', 'test3.jpg'];
+
+async function sweepLeftovers(label) {
+  const { data: stale } = await admin
+    .from('photos')
+    .select('id, storage_path, thumb_path')
+    .in('caption', FIXTURE_CAPTIONS)
+    .in('original_name', FIXTURE_FILENAMES);
+
+  if (!stale || stale.length === 0) return 0;
+
+  await admin.storage.from('memories').remove(stale.flatMap((r) => [r.storage_path, r.thumb_path]));
+  await admin.from('photos').delete().in('id', stale.map((r) => r.id));
+  console.log(dim(`  swept ${stale.length} leftover fixture photo(s) ${label}`));
+  return stale.length;
+}
+
+await sweepLeftovers('from a previous run');
+
 console.log(bold('\n1. AUTHENTICATION\n'));
 
 let A, B;
@@ -294,8 +323,27 @@ console.log(bold('\nCLEANUP\n'));
   check(settingsIntact, 'your real settings were restored untouched',
     settingsAfter?.find((r) => r.key === 'relationship_start_date')?.value);
 
+  await sweepLeftovers('after the run');
+
   const { count } = await admin.from('photos').select('id', { count: 'exact', head: true });
-  check(count === photosBefore, 'every test photo removed, real photos untouched', `${count} photos (started with ${photosBefore})`);
+  check(count === photosBefore, 'photo count back to where it started', `${count} photos (started with ${photosBefore})`);
+
+  // A matching total is not enough — assert no fixture row survives at all.
+  const { data: survivors } = await admin
+    .from('photos')
+    .select('id')
+    .in('caption', FIXTURE_CAPTIONS)
+    .in('original_name', FIXTURE_FILENAMES);
+  check((survivors ?? []).length === 0, 'no test photo left in your album', `${survivors?.length ?? 0} found`);
+
+  const { data: staleComments } = await admin
+    .from('comments')
+    .select('id')
+    .in('body', ['A note from owner A', 'A reply from owner B', 'edited by A', 'A tampering with B']);
+  if ((staleComments ?? []).length) {
+    await admin.from('comments').delete().in('id', staleComments.map((c) => c.id));
+  }
+  check((staleComments ?? []).length === 0, 'no test comment left in your album', `${staleComments?.length ?? 0} swept`);
 }
 
 const failed = results.filter(([ok]) => !ok);

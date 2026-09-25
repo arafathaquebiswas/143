@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 
-import { CloseIcon, HeartIcon, TrashIcon } from '@/components/icons';
+import { ChatIcon, CloseIcon, TrashIcon } from '@/components/icons';
 import {
   addCommentAction,
   deleteCommentAction,
@@ -31,7 +31,9 @@ export default function PhotoComments({
   /** Hands the new list back up so the gallery keeps it after the viewer closes. */
   onChange: (next: PhotoComment[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  // Existing notes are shown straight away; an empty thread stays collapsed
+  // so the viewer is not cluttered for photos nobody has written on.
+  const [open, setOpen] = useState(comments.length > 0);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -43,9 +45,11 @@ export default function PhotoComments({
 
   // Collapse again when the viewer moves to another photo.
   useEffect(() => {
-    setOpen(false);
+    setOpen(comments.length > 0);
     setEditingId(null);
     setError(null);
+    setDraft('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photoId]);
 
   useEffect(() => {
@@ -106,9 +110,9 @@ export default function PhotoComments({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-white/75 backdrop-blur-xl transition-all duration-300 hover:bg-white/15 hover:text-white"
+        className="inline-flex min-h-11 items-center gap-2.5 rounded-full border border-white/20 bg-white/10 px-5 py-3 text-[0.8125rem] font-semibold text-white/90 backdrop-blur-xl transition-all duration-300 hover:border-white/35 hover:bg-white/20 hover:text-white"
       >
-        <HeartIcon filled width={12} height={12} />
+        <ChatIcon width={15} height={15} />
         {comments.length === 0
           ? 'Leave a note'
           : `${comments.length} ${comments.length === 1 ? 'note' : 'notes'}`}
@@ -233,7 +237,7 @@ export default function PhotoComments({
               type="button"
               onClick={post}
               disabled={pending || !draft.trim()}
-              className="shrink-0 rounded-full bg-gradient-to-br from-accent to-clay px-5 py-3 text-sm font-semibold text-white transition-all duration-300 active:scale-95 disabled:opacity-40"
+              className="min-h-11 shrink-0 rounded-full bg-gradient-to-br from-accent to-clay px-5 py-3 text-sm font-semibold text-white transition-all duration-300 active:scale-95 disabled:opacity-40"
             >
               {pending ? '…' : 'Send'}
             </button>
