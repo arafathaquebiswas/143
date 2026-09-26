@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTransition } from 'react';
 
+import NotificationBell from '@/components/NotificationBell';
 import ThemeToggle from '@/components/ThemeToggle';
 import { signOutAction } from '@/lib/actions';
 import { cn } from '@/lib/utils';
@@ -20,13 +21,13 @@ import {
 } from '@/components/icons';
 
 const LINKS = [
-  { href: '/', label: 'Home', Icon: HomeIcon },
-  { href: '/gallery', label: 'Gallery', Icon: GalleryIcon },
-  { href: '/timeline', label: 'Timeline', Icon: TimelineIcon },
-  { href: '/reels', label: 'Reels', Icon: VideoIcon },
-  { href: '/recreate', label: 'Someday', Icon: SparkleIcon },
-  { href: '/favorites', label: 'Loved', Icon: HeartIcon },
-  { href: '/upload', label: 'Add', Icon: UploadIcon },
+  { href: '/', label: 'Home', short: 'Home', Icon: HomeIcon },
+  { href: '/gallery', label: 'Memories', short: 'Memories', Icon: GalleryIcon },
+  { href: '/timeline', label: 'Timeline', short: 'Timeline', Icon: TimelineIcon },
+  { href: '/reels', label: 'Little Clips', short: 'Clips', Icon: VideoIcon },
+  { href: '/recreate', label: 'Someday', short: 'Someday', Icon: SparkleIcon },
+  { href: '/favorites', label: 'Loved', short: 'Loved', Icon: HeartIcon },
+  { href: '/upload', label: 'Add', short: 'Add', Icon: UploadIcon },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -71,6 +72,7 @@ export default function Nav({ title, name }: { title: string; name: string }) {
           </nav>
 
           <div className="ml-auto flex items-center gap-1.5 md:ml-0">
+            <NotificationBell />
             <ThemeToggle />
             <Link
               href="/settings"
@@ -103,8 +105,8 @@ export default function Nav({ title, name }: { title: string; name: string }) {
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="mx-auto flex max-w-lg items-stretch justify-between px-1.5">
-          {[...LINKS, { href: '/settings', label: 'You', Icon: SettingsIcon }].map(
-            ({ href, label, Icon }) => {
+          {[...LINKS, { href: '/settings', label: 'You', short: 'You', Icon: SettingsIcon }].map(
+            ({ href, short, Icon }) => {
               const active = isActive(pathname, href);
               return (
                 <Link
@@ -127,7 +129,7 @@ export default function Nav({ title, name }: { title: string; name: string }) {
                   >
                     <Icon width={20} height={20} />
                   </span>
-                  {label}
+                  {short}
                 </Link>
               );
             },

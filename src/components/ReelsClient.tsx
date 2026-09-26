@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
 
 import PhotoComments from '@/components/PhotoComments';
@@ -35,6 +36,17 @@ export default function ReelsClient({
   const [, startMutation] = useTransition();
 
   const videoRefs = useRef(new Map<string, HTMLVideoElement>());
+  const cardRefs = useRef(new Map<string, HTMLElement>());
+
+  // A notification deep-links here with ?clip=<id>; bring that one into view.
+  const params = useSearchParams();
+  const wantedId = params.get('clip');
+  useEffect(() => {
+    if (!wantedId) return;
+    const card = cardRefs.current.get(wantedId);
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantedId, items.length]);
 
   /** Only one reel plays at a time; everything else is paused and released. */
   const pauseOthers = (keepId: string) => {
@@ -114,7 +126,7 @@ export default function ReelsClient({
         });
         if (more.length < PAGE) setExhausted(true);
       } catch {
-        setError('Could not load more reels.');
+        setError('Could not load more clips.');
       }
     });
 
@@ -139,7 +151,7 @@ export default function ReelsClient({
         >
           <span className="inline-flex items-center justify-center gap-2.5">
             <CameraIcon width={18} height={18} />
-            Add a reel
+            Add a Little Clip
           </span>
         </button>
       )}
@@ -151,7 +163,7 @@ export default function ReelsClient({
             <span className="animate-breathe mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-accent/15 to-clay/10 text-accent ring-1 ring-accent/15">
               <CameraIcon width={26} height={26} />
             </span>
-            <h3 className="display text-2xl">No reels yet</h3>
+            <h3 className="display text-2xl">No clips yet</h3>
             <p className="mx-auto mt-2.5 max-w-xs text-sm leading-relaxed text-muted">
               Short videos of the two of you. Up to 45 seconds each.
             </p>
@@ -164,7 +176,14 @@ export default function ReelsClient({
             return (
               <article
                 key={reel.id}
-                className="card animate-reveal overflow-hidden p-0"
+                ref={(el) => {
+                  if (el) cardRefs.current.set(reel.id, el);
+                  else cardRefs.current.delete(reel.id);
+                }}
+                className={cn(
+                  'card animate-reveal overflow-hidden p-0',
+                  wantedId === reel.id && 'ring-2 ring-accent/40',
+                )}
                 style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
               >
                 <div className="relative bg-black">
@@ -273,7 +292,7 @@ export default function ReelsClient({
                         <button
                           type="button"
                           onClick={() => remove(reel)}
-                          aria-label="Delete this reel"
+                          aria-label="Delete this clip"
                           className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-line text-muted transition hover:border-danger/40 hover:text-danger"
                         >
                           <TrashIcon width={14} height={14} />
@@ -303,7 +322,7 @@ export default function ReelsClient({
             disabled={loadingMore}
             className="rounded-full border border-line/70 bg-surface/70 px-8 py-3.5 text-sm font-medium backdrop-blur-xl transition hover:border-accent/40 hover:text-accent disabled:opacity-60"
           >
-            {loadingMore ? 'Loading…' : 'Load more reels'}
+            {loadingMore ? 'Loading…' : 'Load more clips'}
           </button>
         </div>
       )}

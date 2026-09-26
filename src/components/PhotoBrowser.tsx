@@ -1,7 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, useTransition } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 
 import Lightbox from '@/components/Lightbox';
 import PhotoCard from '@/components/PhotoCard';
@@ -141,6 +142,16 @@ export default function PhotoBrowser({
       }
     });
   };
+
+  // A notification deep-links here with ?photo=<id>; open that exact one.
+  const params = useSearchParams();
+  const wantedId = params.get('photo');
+  useEffect(() => {
+    if (!wantedId) return;
+    const idx = items.findIndex((p) => p.id === wantedId);
+    if (idx >= 0) setOpenIndex(idx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantedId, items.length]);
 
   const months = useMemo(() => (layout === 'timeline' ? groupByMonth(items) : []), [items, layout]);
 

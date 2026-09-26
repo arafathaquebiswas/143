@@ -126,6 +126,11 @@ export async function createPhotosAction(
     const { data, error } = await supabase.from('photos').insert(withCollection).select('id');
     if (error) return { ok: false, error: error.message };
 
+    // One notification per uploaded photo, deep-linking to that photo.
+    for (const created of data ?? []) {
+      await notifyPartner(supabase, user.id, 'photo', { photoId: created.id });
+    }
+
     revalidateAll();
     return { ok: true, ids: (data ?? []).map((r) => r.id) };
   } catch (e) {
@@ -319,6 +324,8 @@ export async function createReelAction(item: NewReelInput): Promise<ActionResult
 
     if (error) return { ok: false, error: error.message };
 
+    await notifyPartner(supabase, user.id, 'reel', { photoId: data.id });
+
     revalidateAll();
     return { ok: true, id: data.id };
   } catch (e) {
@@ -365,6 +372,19 @@ export async function addCommentAction(
       .select('display_name')
       .eq('user_id', user.id)
       .maybeSingle();
+
+    // Which kind of thing was commented on decides the wording and the link.
+    const { data: target } = await supabase
+      .from('photos')
+      .select('media_kind')
+      .eq('id', photoId)
+      .maybeSingle();
+    await notifyPartner(
+      supabase,
+      user.id,
+      target?.media_kind === 'video' ? 'comment_reel' : 'comment_photo',
+      { photoId, commentId: data.id },
+    );
 
     revalidateAll();
     return {
@@ -537,6 +557,159 @@ export async function unmarkRecreatedAction(inspirationId: string): Promise<Acti
 export async function loadMorePhotosAction(filter: PhotoFilter): Promise<Photo[]> {
   await requireViewer();
   return getPhotos(filter);
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+export type AppNotification = {
+  id: string;
+  type: 'photo' | 'reel' | 'comment_photo' | 'comment_reel';
+  actorName: string;
+  photoId: string | null;
+  commentId: string | null;
+  isRead: boolean;
+  createdAt: string;
+  thumbUrl: string | null;
+  mediaKind: 'photo' | 'video' | null;
+};
+
+/** True when supabase/add-notifications.sql has not been run yet. */
+function tableMissing(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { code, message } = error as { code?: string; message?: string };
+  return code === 'PGRST205' || code === '42P01' || /notifications.*(does not exist|schema cache)/i.test(message ?? '');
+}
+
+/**
+ * Tells the OTHER owner that something happened. Never the actor themselves —
+ * the database enforces that too, with a CHECK constraint.
+ *
+ * Failures here are swallowed on purpose: a notification is a nicety, and it
+ * must never make an upload or a comment appear to fail.
+ */
+async function notifyPartner(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  actorId: string,
+  type: AppNotification['type'],
+  target: { photoId?: string; commentId?: string },
+) {
+  try {
+    const { data: others } = await supabase
+      .from('allowed_users')
+      .select('user_id')
+      .neq('user_id', actorId);
+
+    for (const other of others ?? []) {
+      await supabase.from('notifications').insert({
+        recipient_id: other.user_id,
+        actor_id: actorId,
+        type,
+        photo_id: target.photoId ?? null,
+        comment_id: target.commentId ?? null,
+      });
+      // A duplicate is rejected by the unique index, which is exactly what we
+      // want: one action, one notification, however many times this runs.
+    }
+  } catch {
+    /* never block the real action */
+  }
+}
+
+/** Newest first. Only ever your own inbox — RLS sees to that. */
+export async function listNotificationsAction(
+  limit = 20,
+  offset = 0,
+): Promise<{ items: AppNotification[]; unread: number; available: boolean }> {
+  try {
+    const { supabase, user } = await requireViewer();
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id, type, actor_id, photo_id, comment_id, is_read, created_at')
+      .eq('recipient_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      if (tableMissing(error)) return { items: [], unread: 0, available: false };
+      return { items: [], unread: 0, available: true };
+    }
+
+    const { count } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('recipient_id', user.id)
+      .eq('is_read', false);
+
+    const { data: roster } = await supabase.from('allowed_users').select('user_id, display_name');
+    const nameOf = new Map((roster ?? []).map((p) => [p.user_id, p.display_name]));
+
+    // Only the poster/thumbnail is ever fetched here — never a full photo,
+    // and never an mp4.
+    const photoIds = [...new Set((data ?? []).map((n) => n.photo_id).filter(Boolean))] as string[];
+    const { data: targets } = photoIds.length
+      ? await supabase.from('photos').select('id, thumb_path, media_kind').in('id', photoIds)
+      : { data: [] as { id: string; thumb_path: string; media_kind: 'photo' | 'video' }[] };
+
+    const signed = new Map<string, string>();
+    if ((targets ?? []).length) {
+      const { data: urls } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUrls((targets ?? []).map((t) => t.thumb_path), 7200);
+      for (const u of urls ?? []) if (u.signedUrl && u.path) signed.set(u.path, u.signedUrl);
+    }
+
+    const items: AppNotification[] = (data ?? []).map((n) => {
+      const target = (targets ?? []).find((t) => t.id === n.photo_id);
+      return {
+        id: n.id,
+        type: n.type,
+        actorName: nameOf.get(n.actor_id) ?? 'Someone',
+        photoId: n.photo_id,
+        commentId: n.comment_id,
+        isRead: n.is_read,
+        createdAt: n.created_at,
+        thumbUrl: target ? (signed.get(target.thumb_path) ?? null) : null,
+        mediaKind: target?.media_kind ?? null,
+      };
+    });
+
+    return { items, unread: count ?? 0, available: true };
+  } catch {
+    return { items: [], unread: 0, available: false };
+  }
+}
+
+export async function markNotificationReadAction(id: string): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await requireViewer();
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', id)
+      .eq('recipient_id', user.id);
+    if (error && !tableMissing(error)) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+export async function markAllNotificationsReadAction(): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await requireViewer();
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('recipient_id', user.id)
+      .eq('is_read', false);
+    if (error && !tableMissing(error)) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -141,7 +141,7 @@ export default function ReelUploader({
       await onPosted();
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save that reel.');
+      setError(e instanceof Error ? e.message : 'Could not save that clip.');
       setProgress(0);
     } finally {
       setBusy(false);
@@ -165,7 +165,7 @@ export default function ReelUploader({
 
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="display text-xl">Add a reel</h2>
+          <h2 className="display text-xl">Add a Little Clip</h2>
           <p className="mt-1 text-sm text-muted">
             Up to {MAX_VIDEO_SECONDS} seconds, 12 MB, MP4.
           </p>
@@ -298,7 +298,7 @@ export default function ReelUploader({
               onClick={save}
               className="sheen min-h-12 flex-1 rounded-full bg-gradient-to-br from-accent to-clay px-4 py-3 text-sm font-semibold text-white shadow-glow transition disabled:opacity-60"
             >
-              {busy ? 'Saving…' : 'Post reel'}
+              {busy ? 'Saving…' : 'Post clip'}
             </button>
           </div>
         </div>
