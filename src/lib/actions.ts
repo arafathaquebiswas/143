@@ -790,12 +790,19 @@ export async function listNotificationsAction(
  */
 export async function getUnreadCountAction(): Promise<{ unread: number; available: boolean }> {
   try {
-    const { supabase, user } = await requireViewer();
+    // Deliberately NOT requireViewer(). This runs on every page load, and
+    // requireViewer costs an auth.getUser round trip (measured 214 ms) plus an
+    // allowed_users query — to scope a count the database already scopes.
+    //
+    // The inbox SELECT policy is "is_allowed() AND recipient_id = auth.uid()",
+    // so this cannot see another person's rows without an explicit
+    // recipient_id match, and someone off the allow list counts zero. Nothing
+    // is trusted from the client: the JWT still comes from the cookie.
+    const supabase = await createClient();
 
     const { count, error } = await supabase
       .from('notifications')
       .select('id', { count: 'exact', head: true })
-      .eq('recipient_id', user.id)
       .gt('expires_at', new Date().toISOString())
       .eq('is_read', false);
 

@@ -12,18 +12,35 @@ const DEFAULT_SETTINGS: AppSettings = {
   home_quote: 'Distance means so little when someone means so much.',
 };
 
-/** The logged-in person, plus the other half of the album. */
-export const getViewer = cache(async function getViewer() {
+/**
+ * The signed-in user, verified once per request.
+ *
+ * auth.getUser() revalidates the token with Supabase, measured at 214-260 ms
+ * every time. getViewer() and getPhotos() each used to call it through their
+ * own cache(), and React's cache only dedupes within a single function — so
+ * every page paid two of those round trips back to back before a single photo
+ * query could start. They now share this one.
+ */
+const authUser = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  return user;
+});
 
-  const { data: roster } = await supabase
-    .from('allowed_users')
-    .select('user_id, display_name')
-    .order('created_at');
+/** The logged-in person, plus the other half of the album. */
+export const getViewer = cache(async function getViewer() {
+  const supabase = await createClient();
+
+  // The roster does not depend on who is asking — RLS scopes it either way —
+  // so it can be fetched while the token is still being verified instead of
+  // after. Two ~200 ms round trips that used to run back to back now overlap.
+  const [user, { data: roster }] = await Promise.all([
+    authUser(),
+    supabase.from('allowed_users').select('user_id, display_name').order('created_at'),
+  ]);
+  if (!user) return null;
 
   const people = (roster ?? []) as Person[];
   const me = people.find((p) => p.user_id === user.id);
@@ -61,17 +78,20 @@ const PHOTO_COLUMNS =
   'media_kind, expires_at, duration_seconds, ' +
   'uploader:allowed_users!photos_uploader_id_fkey(display_name)';
 
-/** auth.getUser() costs a round trip to Supabase; do it once per request. */
-const currentUser = cache(async () => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
-});
+/** Shares the single verified lookup above rather than repeating it. */
+const currentUser = authUser;
 
-/** The two display names, once per request. */
+/**
+ * The two display names, once per request.
+ *
+ * getViewer() has already fetched the whole roster — the same two rows — so
+ * re-querying allowed_users here was a second round trip for data already in
+ * hand. It falls back to its own query only when there is no viewer.
+ */
 const nameMap = cache(async () => {
+  const viewer = await getViewer();
+  if (viewer) return new Map(viewer.people.map((p) => [p.user_id, p.display_name]));
+
   const supabase = await createClient();
   const { data } = await supabase.from('allowed_users').select('user_id, display_name');
   return new Map((data ?? []).map((p) => [p.user_id, p.display_name]));
@@ -85,8 +105,12 @@ type PhotoQueryRow = PhotoRow & { uploader: { display_name: string } | null };
  */
 export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
   const supabase = await createClient();
-  const user = await currentUser();
-  if (!user) return [];
+  // Kicked off now, awaited only where it is actually needed (marking which
+  // hearts are yours, right at the end). Waiting for it here first cost a
+  // serial ~235 ms before the photo query could even be sent; the two overlap
+  // instead. RLS returns nothing to an unauthenticated request anyway, so
+  // starting the query before the token is confirmed exposes nothing.
+  const userPromise = currentUser();
 
   const {
     // Photo views must never pull video rows: it would change what the
@@ -194,7 +218,8 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
   // Supabase sits a long way from the server, so every round trip costs real
   // time. These four are independent — run them together rather than one
   // after another.
-  const [nameOf, favResult, commentResult, partnerResult] = await Promise.all([
+  const [user, nameOf, favResult, commentResult, partnerResult] = await Promise.all([
+    userPromise,
     nameMap(),
     favoritesOnly
       ? Promise.resolve({ data: favorites })
@@ -211,6 +236,9 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
           .in('id', partnerIds)
       : Promise.resolve({ data: [] as { id: string; storage_path: string; thumb_path: string; caption: string | null; memory_date: string }[] }),
   ]);
+
+  // Same guard as before, just reached after the queries rather than before.
+  if (!user) return [];
 
   if (!favoritesOnly) favorites = favResult.data ?? [];
   const commentRows = commentResult.data;
