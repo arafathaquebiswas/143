@@ -26,3 +26,8 @@ supabase/.temp/
 
 # Generated account passwords — never commit
 ACCOUNTS.local.txt
+
+# Cleanup trigger secret and test snapshot — never commit
+.cleanup-secret.local
+.photo-snapshot.local
+.cron-command.local

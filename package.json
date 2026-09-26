@@ -16,7 +16,9 @@
     "cleanup-orphans": "node scripts/cleanup-orphans.mjs",
     "backup": "node scripts/backup.mjs",
     "copy-password": "node scripts/copy-password.mjs",
-    "set-password": "node scripts/set-password.mjs"
+    "set-password": "node scripts/set-password.mjs",
+    "cleanup:secret": "node scripts/show-cleanup-secret.mjs secret",
+    "cleanup:cron": "node scripts/show-cleanup-secret.mjs cron"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
