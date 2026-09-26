@@ -1,57 +1,145 @@
 -- ===========================================================================
---  Our Little World — private notifications
+--  Our Little World — private notifications between Arafat and Subbha
 --
---  ADDITIVE ONLY. Creates one new table. It alters no existing table, drops
---  nothing, and changes no existing policy. Safe to re-run.
+--  ADDITIVE ONLY. This migration creates:
+--    * ONE new table    : public.notifications
+--    * ONE new function : public.purge_expired_notifications()
+--    * ONE new trigger  : on the new table only
+--
+--  It does NOT alter, drop or touch: photos, comments, favorites,
+--  allowed_users, app_settings, the collections columns
+--  (collection / recreated_photo_id / recreated_at), the videos columns
+--  (media_kind / expires_at / duration_seconds), storage, or any existing
+--  policy. No extension is installed. Safe to run more than once.
 -- ===========================================================================
 
+
+-- ---------------------------------------------------------------------------
+--  1. The table
+--
+--  Six event types covering the five things you asked for. Comments are split
+--  into two types only so the wording and the deep link can differ — a comment
+--  on a Clip must open /reels, not /gallery.
+--
+--      photo          Subbha added a new memory ❤️
+--      recreate       Subbha added something to Recreate Someday ✨
+--      reel           Subbha added a new Clip 🎬
+--      favorite       Subbha loved your memory ❤️
+--      comment_photo  Subbha commented on your memory
+--      comment_reel   Subbha commented on your Clip
+-- ---------------------------------------------------------------------------
 create table if not exists public.notifications (
   id           uuid primary key default gen_random_uuid(),
+
+  -- Who sees it, and who caused it. Both must be approved users.
   recipient_id uuid not null references public.allowed_users (user_id) on delete cascade,
   actor_id     uuid not null references public.allowed_users (user_id) on delete cascade,
 
-  -- What happened. The wording is built in the app from this plus the actor's
-  -- name, so a renamed person is never stale in an old notification.
-  type text not null check (type in ('photo', 'reel', 'comment_photo', 'comment_reel')),
+  -- What happened. The sentence is assembled in the app from this plus the
+  -- actor's CURRENT display name, so renaming yourself never leaves stale
+  -- wording sitting in an old notification.
+  type text not null check (type in (
+    'photo',
+    'recreate',
+    'reel',
+    'favorite',
+    'comment_photo',
+    'comment_reel'
+  )),
 
-  -- Deep-link targets. ON DELETE CASCADE means deleting a photo, reel or
-  -- comment takes its notifications with it, so a notification can never
-  -- point at something that no longer exists.
-  photo_id   uuid references public.photos (id)   on delete cascade,
-  comment_id uuid references public.comments (id) on delete cascade,
+  -- What to open. Every one of the six events is about a row in photos
+  -- (which holds memories, Clips and Recreate Someday items alike), so this
+  -- is NOT NULL: a notification can never exist with nowhere to go.
+  --
+  -- ON DELETE CASCADE runs in ONE DIRECTION ONLY. Deleting a photo, video or
+  -- comment removes the notifications pointing at it, so a notification can
+  -- never open something that is gone. Deleting a notification NEVER touches
+  -- the photo, video, memory, comment, favourite or Recreate Someday item.
+  photo_id   uuid not null references public.photos (id)   on delete cascade,
+  comment_id uuid          references public.comments (id) on delete cascade,
 
   is_read    boolean     not null default false,
   created_at timestamptz not null default now(),
 
-  -- You are never notified about your own action. Enforced here, not just in
-  -- application code.
+  -- 21-day expiry, as requested: created_at + 21 days.
+  expires_at timestamptz not null default (now() + interval '21 days'),
+
+  -- You are never notified about your own action. Enforced by the database,
+  -- not only by application code.
   constraint notifications_no_self check (recipient_id <> actor_id)
 );
 
--- The inbox query: newest first, for one person.
+
+-- ---------------------------------------------------------------------------
+--  2. The 21-day lifetime is set by the database, never by the browser
+--
+--  Defaults alone could be overridden by whatever a request sends. This
+--  trigger overwrites both timestamps on every insert, so the retention
+--  window cannot be lengthened from the client under any circumstances.
+-- ---------------------------------------------------------------------------
+create or replace function public.notifications_set_lifetime()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, pg_temp
+as $fn$
+begin
+  new.created_at := now();
+  new.expires_at := now() + interval '21 days';
+  return new;
+end;
+$fn$;
+
+drop trigger if exists notifications_set_lifetime_trg on public.notifications;
+create trigger notifications_set_lifetime_trg
+  before insert on public.notifications
+  for each row execute function public.notifications_set_lifetime();
+
+
+-- ---------------------------------------------------------------------------
+--  3. Indexes
+-- ---------------------------------------------------------------------------
+
+-- The inbox: newest first, for one person.
 create index if not exists notifications_inbox_idx
   on public.notifications (recipient_id, created_at desc);
 
--- The unread badge.
+-- The unread badge. Partial, so it stays tiny and the count is instant.
 create index if not exists notifications_unread_idx
   on public.notifications (recipient_id)
   where is_read = false;
 
+-- The daily purge.
+create index if not exists notifications_expiry_idx
+  on public.notifications (expires_at);
+
+
 -- ---------------------------------------------------------------------------
---  One action, one notification — enforced by the database, so a page
---  refresh, a retried request or a Realtime reconnect cannot duplicate it.
+--  4. Duplicate protection, enforced by the database
+--
+--  React re-renders, double taps, retried requests and realtime reconnects
+--  all try to insert the same row and are rejected here. The application
+--  treats rejection code 23505 as success, so the love or comment itself
+--  still works instantly and nothing appears to fail.
 -- ---------------------------------------------------------------------------
+
+-- One comment can only ever produce one notification.
 create unique index if not exists notifications_one_per_comment
   on public.notifications (comment_id)
   where comment_id is not null;
 
-create unique index if not exists notifications_one_per_upload
-  on public.notifications (photo_id, type)
-  where comment_id is null and photo_id is not null;
+-- Everything else: one per (who sees it, who did it, what kind, which item).
+--
+-- This is what stops love / un-love / love from filling the inbox: the second
+-- and every later love of the same item by the same person is refused.
+create unique index if not exists notifications_one_per_event
+  on public.notifications (recipient_id, actor_id, type, photo_id)
+  where comment_id is null;
+
 
 -- ---------------------------------------------------------------------------
---  Row Level Security — a private inbox each.
---  Neither of you can read the other's notifications.
+--  5. Row Level Security — a private inbox each
+--
+--  Neither of you can read, alter or delete the other's inbox.
 -- ---------------------------------------------------------------------------
 alter table public.notifications enable row level security;
 
@@ -77,15 +165,32 @@ create policy "mark your own as read"
   using ((select public.is_allowed()) and recipient_id = (select auth.uid()))
   with check ((select public.is_allowed()) and recipient_id = (select auth.uid()));
 
+-- You may clear anything from your own inbox.
 drop policy if exists "clear your own" on public.notifications;
 create policy "clear your own"
   on public.notifications for delete to authenticated
   using ((select public.is_allowed()) and recipient_id = (select auth.uid()));
 
+-- Un-loving retracts the love notification you sent — but only while it is
+-- still UNREAD. Once she has seen it you cannot erase it from her inbox.
+-- This is what makes a mis-tapped love disappear cleanly instead of leaving
+-- "Arafat loved your memory" behind after the love is gone.
+drop policy if exists "retract your own unread" on public.notifications;
+create policy "retract your own unread"
+  on public.notifications for delete to authenticated
+  using (
+    (select public.is_allowed())
+    and actor_id = (select auth.uid())
+    and is_read = false
+  );
+
+
 -- ---------------------------------------------------------------------------
---  Realtime. Supabase applies the SELECT policy above to realtime streams,
---  so each of you only ever receives your own notifications. The table stays
---  the source of truth: if realtime drops, rows are still there on refresh.
+--  6. Realtime — instant delivery
+--
+--  Supabase applies the SELECT policy above to realtime streams, so each of
+--  you only ever receives your own notifications. The table stays the source
+--  of truth: if the socket drops, the rows are still there on next load.
 -- ---------------------------------------------------------------------------
 do $$
 begin
@@ -99,18 +204,80 @@ begin
   end if;
 end $$;
 
+
+-- ---------------------------------------------------------------------------
+--  7. Automatic deletion after 21 days
+--
+--  NO pg_cron. NO pg_net. NO new extension, service or secret. This is a
+--  plain function that your EXISTING daily cleanup call will invoke through
+--  the same Hostinger Cron -> Supabase Edge Function -> service-role path
+--  that already handles expired videos. One schedule, one secret, two jobs.
+--
+--  SAFETY: this function contains exactly ONE delete statement and its table
+--  is public.notifications. There is no other table named anywhere in its
+--  body. It cannot reach a photo, a video, a memory, a storage file, a
+--  comment, a favourite or a Recreate Someday item.
+-- ---------------------------------------------------------------------------
+create or replace function public.purge_expired_notifications()
+returns integer
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  removed integer;
+begin
+  delete from public.notifications where expires_at < now();
+  get diagnostics removed = row_count;
+  return removed;
+end;
+$fn$;
+
+-- Not reachable from the browser at all. Only the service-role key used by
+-- the Edge Function may run it.
+revoke all on function public.purge_expired_notifications() from public;
+revoke all on function public.purge_expired_notifications() from anon;
+revoke all on function public.purge_expired_notifications() from authenticated;
+grant execute on function public.purge_expired_notifications() to service_role;
+
+
 -- ===========================================================================
---  PROOF — expect: notifications | true | 4 | true
+--  VERIFICATION
+--
+--  Expect exactly:
+--
+--    table_name      | notifications
+--    rls_enabled     | true
+--    policies        | 5
+--    realtime_on     | true
+--    purge_fn        | true
+--    lifetime_trg    | true
+--    expiry_default  | (now() + '21 days'::interval)
+--
+--  expiry_default is read straight back out of the catalog rather than
+--  assumed, and inserts nothing.
 -- ===========================================================================
 select
-  c.relname                                                   as table_name,
-  c.relrowsecurity                                            as rls_enabled,
+  c.relname                                                        as table_name,
+  c.relrowsecurity                                                 as rls_enabled,
   (select count(*) from pg_policies
-     where schemaname = 'public' and tablename = 'notifications') as policies,
+     where schemaname = 'public' and tablename = 'notifications')   as policies,
   exists (select 1 from pg_publication_tables
             where pubname = 'supabase_realtime'
               and schemaname = 'public'
-              and tablename = 'notifications')                as realtime_on
+              and tablename = 'notifications')                     as realtime_on,
+  exists (select 1 from pg_proc p
+            join pg_namespace pn on pn.oid = p.pronamespace
+           where pn.nspname = 'public'
+             and p.proname = 'purge_expired_notifications')         as purge_fn,
+  exists (select 1 from pg_trigger
+           where tgrelid = 'public.notifications'::regclass
+             and tgname  = 'notifications_set_lifetime_trg')        as lifetime_trg,
+  (select pg_get_expr(d.adbin, d.adrelid)
+     from pg_attrdef d
+     join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+    where d.adrelid = 'public.notifications'::regclass
+      and a.attname = 'expires_at')                                 as expiry_default
 from pg_class c
 join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and c.relname = 'notifications';
