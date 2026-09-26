@@ -28,11 +28,11 @@ function describe(n: AppNotification): string {
     case 'photo':
       return `${n.actorName} added a new memory`;
     case 'reel':
-      return `${n.actorName} added a new Little Clip`;
+      return `${n.actorName} added a new Clip`;
     case 'comment_photo':
       return `${n.actorName} commented on a memory`;
     case 'comment_reel':
-      return `${n.actorName} commented on a Little Clip`;
+      return `${n.actorName} commented on a Clip`;
   }
 }
 

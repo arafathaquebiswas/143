@@ -24,7 +24,7 @@ const LINKS = [
   { href: '/', label: 'Home', short: 'Home', Icon: HomeIcon },
   { href: '/gallery', label: 'Memories', short: 'Memories', Icon: GalleryIcon },
   { href: '/timeline', label: 'Timeline', short: 'Timeline', Icon: TimelineIcon },
-  { href: '/reels', label: 'Little Clips', short: 'Clips', Icon: VideoIcon },
+  { href: '/reels', label: 'Clips', short: 'Clips', Icon: VideoIcon },
   { href: '/recreate', label: 'Someday', short: 'Someday', Icon: SparkleIcon },
   { href: '/favorites', label: 'Loved', short: 'Loved', Icon: HeartIcon },
   { href: '/upload', label: 'Add', short: 'Add', Icon: UploadIcon },

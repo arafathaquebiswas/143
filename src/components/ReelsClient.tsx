@@ -151,7 +151,7 @@ export default function ReelsClient({
         >
           <span className="inline-flex items-center justify-center gap-2.5">
             <CameraIcon width={18} height={18} />
-            Add a Little Clip
+            Add a Clip
           </span>
         </button>
       )}

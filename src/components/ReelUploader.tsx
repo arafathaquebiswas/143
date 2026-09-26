@@ -165,7 +165,7 @@ export default function ReelUploader({
 
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="display text-xl">Add a Little Clip</h2>
+          <h2 className="display text-xl">Add a Clip</h2>
           <p className="mt-1 text-sm text-muted">
             Up to {MAX_VIDEO_SECONDS} seconds, 12 MB, MP4.
           </p>

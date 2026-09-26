@@ -5,7 +5,7 @@ import ReelsClient from '@/components/ReelsClient';
 import { getReels, getViewer } from '@/lib/photos';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Little Clips' };
+export const metadata = { title: 'Clips' };
 
 export default async function ReelsPage() {
   const viewer = await getViewer();
@@ -16,7 +16,7 @@ export default async function ReelsPage() {
   return (
     <div className="space-y-8">
       <PageHeading
-        eyebrow="Little Clips"
+        eyebrow="Clips"
         title="Our little films"
         hint="Short videos of the two of us. Up to 45 seconds each."
       />

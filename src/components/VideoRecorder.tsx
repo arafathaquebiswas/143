@@ -197,7 +197,7 @@ export default function VideoRecorder({
       className="animate-fade fixed inset-0 z-50 flex flex-col bg-[#0b0807]/96 backdrop-blur-2xl"
       role="dialog"
       aria-modal="true"
-      aria-label="Record a Little Clip"
+      aria-label="Record a Clip"
     >
       <div
         className="flex shrink-0 items-center gap-2 px-4 pt-4 sm:px-6"
