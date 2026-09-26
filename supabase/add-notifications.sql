@@ -25,8 +25,15 @@
 --      recreate       Subbha added something to Recreate Someday ✨
 --      reel           Subbha added a new Clip 🎬
 --      favorite       Subbha loved your memory ❤️
---      comment_photo  Subbha commented on your memory
---      comment_reel   Subbha commented on your Clip
+--      comment_photo  Subbha commented on your memory      (on YOUR memory)
+--                     Subbha left a note on a memory       (on her own)
+--      comment_reel   Subbha commented on your Clip        (on YOUR Clip)
+--                     Subbha left a note on a Clip         (on her own)
+--
+--  Uploads and notes always tell the other person. Only a LOVE is conditional:
+--  it fires solely when the item belongs to the other person, so loving your
+--  own upload notifies nobody. Nobody is ever told about their own action --
+--  the CHECK constraint below makes that impossible, not just unlikely.
 -- ---------------------------------------------------------------------------
 create table if not exists public.notifications (
   id           uuid primary key default gen_random_uuid(),
