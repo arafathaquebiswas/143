@@ -102,20 +102,38 @@ export default function NotificationBell() {
   // dropped connection just means you see it on the next load.
   useEffect(() => {
     let channel: ReturnType<ReturnType<typeof createClient>['channel']> | null = null;
-    try {
-      const supabase = createClient();
-      channel = supabase
-        .channel('notifications-inbox')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
-          // While the panel is shut, a new arrival only needs to move the
-          // badge. The list itself is refetched when you open it.
-          void (openRef.current ? refresh() : refreshCount());
-        })
-        .subscribe();
-    } catch {
-      /* realtime unavailable — polling on navigation still works */
-    }
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const supabase = createClient();
+
+        // The realtime socket authenticates separately from the REST client.
+        // Without this it connects as `anon`, every row is filtered out by the
+        // inbox policy, and subscribe() still reports SUBSCRIBED — so it looks
+        // healthy while delivering nothing. The token has to be handed over
+        // before the channel is opened.
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token || cancelled) return;
+        await supabase.realtime.setAuth(token);
+        if (cancelled) return;
+
+        channel = supabase
+          .channel('notifications-inbox')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
+            // While the panel is shut, a new arrival only needs to move the
+            // badge. The list itself is refetched when you open it.
+            void (openRef.current ? refresh() : refreshCount());
+          })
+          .subscribe();
+      } catch {
+        /* realtime unavailable — the count still refreshes on navigation */
+      }
+    })();
+
     return () => {
+      cancelled = true;
       try {
         channel?.unsubscribe();
       } catch {

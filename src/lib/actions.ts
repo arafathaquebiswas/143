@@ -282,7 +282,7 @@ export async function toggleFavoriteAction(
         await notifyPartner(supabase, user.id, 'favorite', { photoId: id });
       }
     } else {
-      await retractFavoriteNotice(supabase, user.id, id);
+      await retractFavoriteNotice(supabase, id);
     }
 
     revalidateAll();
@@ -673,22 +673,26 @@ async function notifyPartner(
 
 /**
  * Undoes the love notification when a love is taken back, so a mis-tap does
- * not leave "Arafat loved your memory" sitting in her inbox. The RLS policy
- * only permits this while she has not read it yet.
+ * not leave "Arafat loved your memory" sitting in her inbox.
+ *
+ * This has to go through a database function rather than a plain delete.
+ * Postgres applies the SELECT policies when it locates rows for a DELETE, and
+ * that policy hides the other person's inbox on purpose — so the sender can
+ * never find their own sent row to remove it. The function is SECURITY
+ * DEFINER with actor_id pinned to the caller, which keeps the inbox private
+ * while still allowing exactly this one retraction.
  */
 async function retractFavoriteNotice(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  actorId: string,
   photoId: string,
 ) {
   try {
-    await supabase
-      .from('notifications')
-      .delete()
-      .eq('actor_id', actorId)
-      .eq('photo_id', photoId)
-      .eq('type', 'favorite')
-      .eq('is_read', false);
+    const { error } = await supabase.rpc('retract_favorite_notification', {
+      p_photo_id: photoId,
+    });
+    if (error && !tableMissing(error) && error.code !== 'PGRST202') {
+      console.error(`[notify] could not retract the love notice: ${error.message}`);
+    }
   } catch {
     /* taking the love back still succeeded; nothing here is worth failing on */
   }

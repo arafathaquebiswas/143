@@ -178,18 +178,12 @@ create policy "clear your own"
   on public.notifications for delete to authenticated
   using ((select public.is_allowed()) and recipient_id = (select auth.uid()));
 
--- Un-loving retracts the love notification you sent — but only while it is
--- still UNREAD. Once she has seen it you cannot erase it from her inbox.
--- This is what makes a mis-tapped love disappear cleanly instead of leaving
--- "Arafat loved your memory" behind after the love is gone.
+-- NOTE: there is deliberately NO "the sender may delete what they sent"
+-- policy. Such a policy cannot work — PostgreSQL applies the SELECT policies
+-- when it locates rows for a DELETE, and the SELECT policy above hides the
+-- other person's inbox, so the sender could never find the row. Retracting an
+-- un-loved notice is handled by retract_favorite_notification() in section 8.
 drop policy if exists "retract your own unread" on public.notifications;
-create policy "retract your own unread"
-  on public.notifications for delete to authenticated
-  using (
-    (select public.is_allowed())
-    and actor_id = (select auth.uid())
-    and is_read = false
-  );
 
 
 -- ---------------------------------------------------------------------------
@@ -248,6 +242,43 @@ revoke all on function public.purge_expired_notifications() from authenticated;
 grant execute on function public.purge_expired_notifications() to service_role;
 
 
+-- ---------------------------------------------------------------------------
+--  8. Taking back an un-loved notice
+--
+--  SECURITY DEFINER so it can reach a row the caller is not allowed to read.
+--  Safe because the caller cannot choose whose row: actor_id is pinned to
+--  auth.uid(), the type is pinned to 'favorite', and is_read = false means a
+--  notice already seen can never be erased.
+-- ---------------------------------------------------------------------------
+create or replace function public.retract_favorite_notification(p_photo_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  removed integer;
+begin
+  if not public.is_allowed() then
+    raise exception 'not allowed';
+  end if;
+
+  delete from public.notifications
+   where actor_id = auth.uid()
+     and photo_id = p_photo_id
+     and type     = 'favorite'
+     and is_read  = false;
+
+  get diagnostics removed = row_count;
+  return removed;
+end;
+$fn$;
+
+revoke all on function public.retract_favorite_notification(uuid) from public;
+revoke all on function public.retract_favorite_notification(uuid) from anon;
+grant execute on function public.retract_favorite_notification(uuid) to authenticated;
+
+
 -- ===========================================================================
 --  VERIFICATION
 --
@@ -255,7 +286,7 @@ grant execute on function public.purge_expired_notifications() to service_role;
 --
 --    table_name      | notifications
 --    rls_enabled     | true
---    policies        | 5
+--    policies        | 4
 --    realtime_on     | true
 --    purge_fn        | true
 --    lifetime_trg    | true

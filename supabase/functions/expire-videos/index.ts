@@ -113,7 +113,30 @@ Deno.serve(async (req) => {
     void removed;
   }
 
-  return new Response(JSON.stringify(report, null, 2), {
+  // -------------------------------------------------------------------------
+  //  Second job, same daily run: drop notifications past their 21 days.
+  //
+  //  Deliberately last, and deliberately isolated. It runs after the video
+  //  work so it cannot affect it, and its own failure is reported rather than
+  //  thrown, so a problem here can never stop videos being cleaned up.
+  //
+  //  purge_expired_notifications() contains a single delete statement whose
+  //  table is public.notifications. It cannot reach a photo, a video, a
+  //  storage file, a comment, a favourite or a Recreate Someday item.
+  // -------------------------------------------------------------------------
+  let notifications: { purged: number } | { error: string };
+  if (dryRun) {
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .lt('expires_at', new Date().toISOString());
+    notifications = error ? { error: error.message } : { purged: count ?? 0 };
+  } else {
+    const { data, error } = await supabase.rpc('purge_expired_notifications');
+    notifications = error ? { error: error.message } : { purged: data ?? 0 };
+  }
+
+  return new Response(JSON.stringify({ ...report, notifications }, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });
 });
