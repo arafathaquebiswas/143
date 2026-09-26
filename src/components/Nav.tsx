@@ -30,6 +30,13 @@ const LINKS = [
   { href: '/upload', label: 'Add', short: 'Add', Icon: UploadIcon },
 ];
 
+/**
+ * The desktop header needs 1189px to lay out without collision: 209 for the
+ * logo and title, 706 for the nav pill, 178 for the four controls, plus 96 of
+ * padding and gaps. It used to appear at Tailwind's md (768px), which is 421px
+ * short, so the groups overlapped from 768 all the way to 1189. Switching at
+ * 1200 clears the measured requirement with a little room to spare.
+ */
 function isActive(pathname: string, href: string) {
   return href === '/' ? pathname === '/' : pathname.startsWith(href);
 }
@@ -50,7 +57,7 @@ export default function Nav({ title, name }: { title: string; name: string }) {
           </Link>
 
           {/* Floating pill navigation */}
-          <nav className="ml-auto hidden items-center rounded-full border border-line/70 bg-surface/60 p-1 backdrop-blur-xl md:flex">
+          <nav className="ml-auto hidden items-center rounded-full border border-line/70 bg-surface/60 p-1 backdrop-blur-xl min-[1200px]:flex">
             {LINKS.map(({ href, label, Icon }) => {
               const active = isActive(pathname, href);
               return (
@@ -71,13 +78,13 @@ export default function Nav({ title, name }: { title: string; name: string }) {
             })}
           </nav>
 
-          <div className="ml-auto flex items-center gap-1.5 md:ml-0">
+          <div className="ml-auto flex items-center gap-1.5 min-[1200px]:ml-0">
             <NotificationBell />
             <ThemeToggle />
             <Link
               href="/settings"
               className={cn(
-                'hidden h-10 w-10 items-center justify-center rounded-full border border-line/70 bg-surface/60 backdrop-blur-xl transition-all duration-300 hover:border-accent/40 hover:text-accent md:inline-flex',
+                'hidden h-10 w-10 items-center justify-center rounded-full border border-line/70 bg-surface/60 backdrop-blur-xl transition-all duration-300 hover:border-accent/40 hover:text-accent min-[1200px]:inline-flex',
                 isActive(pathname, '/settings') ? 'text-accent' : 'text-muted',
               )}
               aria-label="Settings"
@@ -89,7 +96,7 @@ export default function Nav({ title, name }: { title: string; name: string }) {
               type="button"
               onClick={() => startTransition(() => void signOutAction())}
               disabled={pending}
-              className="hidden h-10 w-10 items-center justify-center rounded-full border border-line/70 bg-surface/60 text-muted backdrop-blur-xl transition-all duration-300 hover:border-danger/40 hover:text-danger disabled:opacity-50 md:inline-flex"
+              className="hidden h-10 w-10 items-center justify-center rounded-full border border-line/70 bg-surface/60 text-muted backdrop-blur-xl transition-all duration-300 hover:border-danger/40 hover:text-danger disabled:opacity-50 min-[1200px]:inline-flex"
               aria-label="Sign out"
               title="Sign out"
             >
@@ -101,7 +108,7 @@ export default function Nav({ title, name }: { title: string; name: string }) {
 
       {/* Mobile tab bar */}
       <nav
-        className="glass fixed inset-x-0 bottom-0 z-30 border-t border-line/60 md:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-30 border-t border-line/60 min-[1200px]:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="mx-auto flex max-w-lg items-stretch justify-between px-1.5">

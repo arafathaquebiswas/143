@@ -17,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-dvh">
       <Nav title={settings.home_title} name={viewer.displayName} />
-      <main className="mx-auto w-full max-w-6xl px-5 pb-32 pt-8 sm:px-8 sm:pt-12 md:pb-20">
+      <main className="mx-auto w-full max-w-6xl px-5 pb-32 pt-8 sm:px-8 sm:pt-12 min-[1200px]:pb-20">
         {children}
       </main>
     </div>
