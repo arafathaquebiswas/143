@@ -260,6 +260,79 @@ export async function toggleFavoriteAction(
 }
 
 // ---------------------------------------------------------------------------
+// Reels (short video memories)
+// ---------------------------------------------------------------------------
+
+export type NewReelInput = {
+  storage_path: string;
+  thumb_path: string;
+  caption: string | null;
+  memory_date: string;
+  duration_seconds: number;
+  width: number | null;
+  height: number | null;
+  size_bytes: number | null;
+  original_name: string | null;
+};
+
+/** How long a video memory is kept. Mirrors VIDEO_RETENTION_DAYS. */
+const VIDEO_RETENTION_DAYS = 60;
+
+/**
+ * Saves a reel once the browser has uploaded the video and its poster.
+ *
+ * expires_at is stamped here rather than trusted from the client, so the
+ * retention window cannot be extended from the browser. The database also
+ * insists a video HAS an expiry and a photo has none.
+ */
+export async function createReelAction(item: NewReelInput): Promise<ActionResult & { id?: string }> {
+  try {
+    const { supabase, user } = await requireViewer();
+
+    if (!(item.duration_seconds > 0) || item.duration_seconds > 46) {
+      return { ok: false, error: 'Video must be 45 seconds or shorter.' };
+    }
+    if ((item.size_bytes ?? 0) > 12 * 1024 * 1024) {
+      return { ok: false, error: 'Video must be 12 MB or smaller.' };
+    }
+
+    const { data, error } = await supabase
+      .from('photos')
+      .insert({
+        uploader_id: user.id,
+        storage_path: item.storage_path,
+        thumb_path: item.thumb_path,
+        caption: item.caption?.trim() || null,
+        memory_date: item.memory_date,
+        is_special: false,
+        collection: 'moment',
+        media_kind: 'video',
+        expires_at: new Date(Date.now() + VIDEO_RETENTION_DAYS * 86_400_000).toISOString(),
+        duration_seconds: item.duration_seconds,
+        width: item.width,
+        height: item.height,
+        size_bytes: item.size_bytes,
+        original_name: item.original_name,
+      })
+      .select('id')
+      .single();
+
+    if (error) return { ok: false, error: error.message };
+
+    revalidateAll();
+    return { ok: true, id: data.id };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** One page of reels, for the load-more button. */
+export async function loadMoreReelsAction(offset: number): Promise<Photo[]> {
+  await requireViewer();
+  return getPhotos({ mediaKind: 'video', sort: 'created', limit: 24, offset });
+}
+
+// ---------------------------------------------------------------------------
 // Comments
 // ---------------------------------------------------------------------------
 

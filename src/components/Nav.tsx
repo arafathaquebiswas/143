@@ -16,12 +16,14 @@ import {
   SparkleIcon,
   TimelineIcon,
   UploadIcon,
+  VideoIcon,
 } from '@/components/icons';
 
 const LINKS = [
   { href: '/', label: 'Home', Icon: HomeIcon },
   { href: '/gallery', label: 'Gallery', Icon: GalleryIcon },
   { href: '/timeline', label: 'Timeline', Icon: TimelineIcon },
+  { href: '/reels', label: 'Reels', Icon: VideoIcon },
   { href: '/recreate', label: 'Someday', Icon: SparkleIcon },
   { href: '/favorites', label: 'Loved', Icon: HeartIcon },
   { href: '/upload', label: 'Add', Icon: UploadIcon },

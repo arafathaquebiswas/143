@@ -235,3 +235,12 @@ export function SparkleIcon({ filled = false, ...props }: IconProps & { filled?:
     </svg>
   );
 }
+
+export function VideoIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="6" width="12.5" height="12" rx="2.5" />
+      <path d="m15.5 10.5 5-2.5v8l-5-2.5v-3Z" />
+    </svg>
+  );
+}

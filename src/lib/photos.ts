@@ -4,7 +4,7 @@ import { cache } from 'react';
 
 import { BUCKET, PAGE_SIZE, SIGNED_URL_TTL } from '@/lib/constants';
 import { createClient } from '@/lib/supabase/server';
-import type { AppSettings, Person, Photo, PhotoComment, PhotoFilter, PhotoRow } from '@/lib/types';
+import type { AppSettings, MediaKind, Person, Photo, PhotoComment, PhotoFilter, PhotoRow } from '@/lib/types';
 
 const DEFAULT_SETTINGS: AppSettings = {
   relationship_start_date: '2024-01-01',
@@ -58,6 +58,7 @@ const PHOTO_COLUMNS =
   'id, uploader_id, storage_path, thumb_path, caption, memory_date, is_special, ' +
   'width, height, size_bytes, original_name, created_at, updated_at, ' +
   'collection, recreated_photo_id, recreated_at, ' +
+  'media_kind, expires_at, duration_seconds, ' +
   'uploader:allowed_users!photos_uploader_id_fkey(display_name)';
 
 /** auth.getUser() costs a round trip to Supabase; do it once per request. */
@@ -88,6 +89,9 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
   if (!user) return [];
 
   const {
+    // Photo views must never pull video rows: it would change what the
+    // gallery shows and start fetching video files it does not need.
+    mediaKind = 'photo',
     collection = 'moment',
     pendingOnly,
     year,
@@ -121,7 +125,7 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
       ? query.order('created_at', { ascending: false })
       : query.order('memory_date', { ascending: false }).order('created_at', { ascending: false });
 
-  query = query.eq('collection', collection);
+  query = query.eq('collection', collection).eq('media_kind', mediaKind);
 
   // Inspirations split into "still to do" and "already recreated".
   if (pendingOnly === true) query = query.is('recreated_at', null);
@@ -163,6 +167,7 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
         ? retry.order('created_at', { ascending: false })
         : retry.order('memory_date', { ascending: false }).order('created_at', { ascending: false });
 
+    if (mediaKind !== 'photo') return [];
     if (specialOnly) retry = retry.eq('is_special', true);
     if (year) {
       const from = month ? `${year}-${String(month).padStart(2, '0')}-01` : `${year}-01-01`;
@@ -253,6 +258,21 @@ export async function getPhotos(filter: PhotoFilter = {}): Promise<Photo[]> {
   });
 }
 
+/** The Reels feed: videos only, newest first. */
+export async function getReels(limit = 24, offset = 0): Promise<Photo[]> {
+  return getPhotos({ mediaKind: 'video', sort: 'created', limit, offset });
+}
+
+/** How many reels exist, for the nav badge and the empty state. */
+export async function getReelCount(): Promise<number> {
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from('photos')
+    .select('id', { count: 'exact', head: true })
+    .eq('media_kind', 'video');
+  return error ? 0 : (count ?? 0);
+}
+
 /** Totals for the little stat row on the homepage. */
 export async function getCounts() {
   const supabase = await createClient();
@@ -263,11 +283,11 @@ export async function getCounts() {
   };
 
   const [photos, special, favorites, pending, recreated] = await Promise.all([
-    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'moment')),
-    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'moment').eq('is_special', true)),
+    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'moment').eq('media_kind', 'photo')),
+    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'moment').eq('media_kind', 'photo').eq('is_special', true)),
     supabase.from('favorites').select('photo_id', { count: 'exact', head: true }),
-    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'inspiration').is('recreated_at', null)),
-    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'inspiration').not('recreated_at', 'is', null)),
+    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'inspiration').eq('media_kind', 'photo').is('recreated_at', null)),
+    safe(supabase.from('photos').select('id', { count: 'exact', head: true }).eq('collection', 'inspiration').eq('media_kind', 'photo').not('recreated_at', 'is', null)),
   ]);
 
   // Before the migration the collection counts are unknown; fall back to the
@@ -295,6 +315,7 @@ export async function getYearsWithMemories(): Promise<number[]> {
     .from('photos')
     .select('memory_date')
     .eq('collection', 'moment')
+    .eq('media_kind', 'photo')
     .order('memory_date', { ascending: false });
 
   if (error && isMissingCollectionColumn(error)) {

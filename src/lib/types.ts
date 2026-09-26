@@ -1,3 +1,6 @@
+/** Photos and short videos live in the same table, told apart by this. */
+export type MediaKind = 'photo' | 'video';
+
 /** Which of the two collections a row belongs to. */
 export type Collection = 'moment' | 'inspiration';
 
@@ -22,6 +25,12 @@ export type PhotoRow = {
   recreated_photo_id: string | null;
   /** When it was marked recreated. Outlives the link if that memory is deleted. */
   recreated_at: string | null;
+  /** 'photo' or 'video'. Existing rows default to 'photo'. */
+  media_kind: MediaKind;
+  /** Videos only: when it is due to be removed. Photos are always null. */
+  expires_at: string | null;
+  /** Videos only, in seconds. */
+  duration_seconds: number | null;
 };
 
 /** One comment on a photo. */
@@ -66,6 +75,8 @@ export type AppSettings = {
 };
 
 export type PhotoFilter = {
+  /** Defaults to 'photo', so no existing photo view ever fetches a video. */
+  mediaKind?: MediaKind;
   /** Defaults to 'moment' everywhere, so existing views are unchanged. */
   collection?: Collection;
   /** Inspirations only: true = still to do, false = already recreated. */

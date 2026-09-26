@@ -184,7 +184,7 @@ export default function PhotoComments({
                             setEditingId(c.id);
                             setEditDraft(c.body);
                           }}
-                          className={cn('rounded-full px-2 py-1 text-[0.625rem] transition', t.action)}
+                          className={cn('min-h-9 inline-flex items-center rounded-full px-2.5 py-2 text-[0.625rem] transition', t.action)}
                         >
                           Edit
                         </button>
@@ -193,7 +193,7 @@ export default function PhotoComments({
                           onClick={() => remove(c.id)}
                           disabled={pending}
                           aria-label="Remove your note"
-                          className={cn('rounded-full p-1.5 transition disabled:opacity-50', t.bin)}
+                          className={cn('min-h-9 min-w-9 inline-flex items-center justify-center rounded-full p-1.5 transition disabled:opacity-50', t.bin)}
                         >
                           <TrashIcon width={13} height={13} />
                         </button>
