@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useTransition } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useState, useTransition } from 'react';
 
 import Lightbox from '@/components/Lightbox';
 import PhotoComments from '@/components/PhotoComments';
@@ -61,6 +62,17 @@ export default function InspirationBrowser({
 
   const toggleFavorite = (p: Photo) =>
     run(p.id, { isFavorite: !p.isFavorite }, () => toggleFavoriteAction(p.id, !p.isFavorite));
+
+  // A Recreate Someday notification deep-links here with ?item=<id>; open that
+  // exact one, the same way the gallery handles ?photo=<id>.
+  const params = useSearchParams();
+  const wantedId = params.get('item');
+  useEffect(() => {
+    if (!wantedId) return;
+    const idx = items.findIndex((p) => p.id === wantedId);
+    if (idx >= 0) setOpenIndex(idx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantedId, items.length]);
 
   const removeItem = async (p: Photo) => {
     const r = await deletePhotoAction(p.id);

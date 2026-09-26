@@ -126,9 +126,20 @@ export async function createPhotosAction(
     const { data, error } = await supabase.from('photos').insert(withCollection).select('id');
     if (error) return { ok: false, error: error.message };
 
-    // One notification per uploaded photo, deep-linking to that photo.
-    for (const created of data ?? []) {
-      await notifyPartner(supabase, user.id, 'photo', { photoId: created.id });
+    // One notification per upload, not per photo: adding twelve at once should
+    // say "added a new memory" once, not twelve times. It opens the first of
+    // them, and the rest are right beside it.
+    //
+    // Which collection it went to decides the wording, so a Recreate Someday
+    // item never announces itself as a new memory.
+    const first = (data ?? [])[0];
+    if (first) {
+      await notifyPartner(
+        supabase,
+        user.id,
+        collection === 'inspiration' ? 'recreate' : 'photo',
+        { photoId: first.id },
+      );
     }
 
     revalidateAll();
@@ -256,6 +267,23 @@ export async function toggleFavoriteAction(
       : await supabase.from('favorites').delete().eq('photo_id', id).eq('user_id', user.id);
 
     if (error) return { ok: false, error: error.message };
+
+    // A love only travels when it is about the OTHER person's item. Loving
+    // your own upload tells nobody, because the only person it could reach is
+    // you. Un-loving takes an unread love notice back with it.
+    if (makeFavorite) {
+      const { data: target } = await supabase
+        .from('photos')
+        .select('uploader_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (target && target.uploader_id !== user.id) {
+        await notifyPartner(supabase, user.id, 'favorite', { photoId: id });
+      }
+    } else {
+      await retractFavoriteNotice(supabase, user.id, id);
+    }
 
     revalidateAll();
     return { ok: true };
@@ -563,16 +591,26 @@ export async function loadMorePhotosAction(filter: PhotoFilter): Promise<Photo[]
 // Notifications
 // ---------------------------------------------------------------------------
 
+export type NotificationType =
+  | 'photo'
+  | 'recreate'
+  | 'reel'
+  | 'favorite'
+  | 'comment_photo'
+  | 'comment_reel';
+
 export type AppNotification = {
   id: string;
-  type: 'photo' | 'reel' | 'comment_photo' | 'comment_reel';
+  type: NotificationType;
   actorName: string;
-  photoId: string | null;
+  photoId: string;
   commentId: string | null;
   isRead: boolean;
   createdAt: string;
   thumbUrl: string | null;
   mediaKind: 'photo' | 'video' | null;
+  /** True when the item this is about belongs to the person reading it. */
+  targetIsMine: boolean;
 };
 
 /** True when supabase/add-notifications.sql has not been run yet. */
@@ -583,37 +621,76 @@ function tableMissing(error: unknown): boolean {
 }
 
 /**
- * Tells the OTHER owner that something happened. Never the actor themselves —
- * the database enforces that too, with a CHECK constraint.
+ * Tells the OTHER person that something happened. Never the actor themselves —
+ * the insert policy and a CHECK constraint enforce that in the database too.
  *
- * Failures here are swallowed on purpose: a notification is a nicety, and it
- * must never make an upload or a comment appear to fail.
+ * A notification must never make an upload, a note or a love appear to fail,
+ * so this never throws. It does NOT swallow blindly, though: the previous
+ * version discarded the result object, which is why a missing table went
+ * unnoticed for so long. Now a real failure is logged, and only the two
+ * expected outcomes are treated as success.
  */
 async function notifyPartner(
   supabase: Awaited<ReturnType<typeof createClient>>,
   actorId: string,
-  type: AppNotification['type'],
-  target: { photoId?: string; commentId?: string },
+  type: NotificationType,
+  target: { photoId: string; commentId?: string },
 ) {
   try {
-    const { data: others } = await supabase
+    const { data: others, error: rosterError } = await supabase
       .from('allowed_users')
       .select('user_id')
       .neq('user_id', actorId);
 
+    if (rosterError) {
+      console.error('[notify] could not read the roster:', rosterError.message);
+      return;
+    }
+
     for (const other of others ?? []) {
-      await supabase.from('notifications').insert({
+      const { error } = await supabase.from('notifications').insert({
         recipient_id: other.user_id,
         actor_id: actorId,
         type,
-        photo_id: target.photoId ?? null,
+        photo_id: target.photoId,
         comment_id: target.commentId ?? null,
       });
-      // A duplicate is rejected by the unique index, which is exactly what we
-      // want: one action, one notification, however many times this runs.
+
+      // 23505 = the unique index refused a repeat. That is the duplicate
+      // protection doing its job, so it counts as success.
+      if (error && error.code !== '23505') {
+        console.error(
+          tableMissing(error)
+            ? '[notify] supabase/add-notifications.sql has not been run yet'
+            : `[notify] ${type} failed: ${error.message}`,
+        );
+      }
     }
+  } catch (e) {
+    console.error('[notify] unexpected:', message(e));
+  }
+}
+
+/**
+ * Undoes the love notification when a love is taken back, so a mis-tap does
+ * not leave "Arafat loved your memory" sitting in her inbox. The RLS policy
+ * only permits this while she has not read it yet.
+ */
+async function retractFavoriteNotice(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  actorId: string,
+  photoId: string,
+) {
+  try {
+    await supabase
+      .from('notifications')
+      .delete()
+      .eq('actor_id', actorId)
+      .eq('photo_id', photoId)
+      .eq('type', 'favorite')
+      .eq('is_read', false);
   } catch {
-    /* never block the real action */
+    /* taking the love back still succeeded; nothing here is worth failing on */
   }
 }
 
@@ -625,10 +702,15 @@ export async function listNotificationsAction(
   try {
     const { supabase, user } = await requireViewer();
 
+    const now = new Date().toISOString();
+
+    // Anything past its 21 days is treated as gone the moment it expires,
+    // whether or not the daily purge has run yet.
     const { data, error } = await supabase
       .from('notifications')
       .select('id, type, actor_id, photo_id, comment_id, is_read, created_at')
       .eq('recipient_id', user.id)
+      .gt('expires_at', now)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -641,6 +723,7 @@ export async function listNotificationsAction(
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('recipient_id', user.id)
+      .gt('expires_at', now)
       .eq('is_read', false);
 
     const { data: roster } = await supabase.from('allowed_users').select('user_id, display_name');
@@ -649,9 +732,21 @@ export async function listNotificationsAction(
     // Only the poster/thumbnail is ever fetched here — never a full photo,
     // and never an mp4.
     const photoIds = [...new Set((data ?? []).map((n) => n.photo_id).filter(Boolean))] as string[];
+    // uploader_id rides along so the wording can say "your memory" only when
+    // it really is hers — it costs nothing, the row is already being read.
     const { data: targets } = photoIds.length
-      ? await supabase.from('photos').select('id, thumb_path, media_kind').in('id', photoIds)
-      : { data: [] as { id: string; thumb_path: string; media_kind: 'photo' | 'video' }[] };
+      ? await supabase
+          .from('photos')
+          .select('id, thumb_path, media_kind, uploader_id')
+          .in('id', photoIds)
+      : {
+          data: [] as {
+            id: string;
+            thumb_path: string;
+            media_kind: 'photo' | 'video';
+            uploader_id: string;
+          }[],
+        };
 
     const signed = new Map<string, string>();
     if ((targets ?? []).length) {
@@ -673,12 +768,37 @@ export async function listNotificationsAction(
         createdAt: n.created_at,
         thumbUrl: target ? (signed.get(target.thumb_path) ?? null) : null,
         mediaKind: target?.media_kind ?? null,
+        targetIsMine: target?.uploader_id === user.id,
       };
     });
 
     return { items, unread: count ?? 0, available: true };
   } catch {
     return { items: [], unread: 0, available: false };
+  }
+}
+
+/**
+ * Just the badge number. The bell lives in the navbar, so this runs on every
+ * page load — it must stay a single HEAD count and nothing else. The full
+ * list, with its roster lookup and signed thumbnails, is only fetched when
+ * the panel is actually opened.
+ */
+export async function getUnreadCountAction(): Promise<{ unread: number; available: boolean }> {
+  try {
+    const { supabase, user } = await requireViewer();
+
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('recipient_id', user.id)
+      .gt('expires_at', new Date().toISOString())
+      .eq('is_read', false);
+
+    if (error) return { unread: 0, available: !tableMissing(error) };
+    return { unread: count ?? 0, available: true };
+  } catch {
+    return { unread: 0, available: false };
   }
 }
 

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { BellIcon, CloseIcon } from '@/components/icons';
 import {
   type AppNotification,
+  getUnreadCountAction,
   listNotificationsAction,
   markAllNotificationsReadAction,
   markNotificationReadAction,
@@ -26,23 +27,34 @@ function ago(iso: string): string {
 function describe(n: AppNotification): string {
   switch (n.type) {
     case 'photo':
-      return `${n.actorName} added a new memory`;
+      return `${n.actorName} added a new memory ❤️`;
+    case 'recreate':
+      return `${n.actorName} added something to Recreate Someday ✨`;
     case 'reel':
-      return `${n.actorName} added a new Clip`;
+      return `${n.actorName} added a new Clip 🎬`;
+    case 'favorite':
+      return `${n.actorName} loved your memory ❤️`;
+    // A note on their own memory is still worth telling you about, but calling
+    // it "your memory" would be a lie, so the sentence follows the owner.
     case 'comment_photo':
-      return `${n.actorName} commented on a memory`;
+      return n.targetIsMine
+        ? `${n.actorName} commented on your memory`
+        : `${n.actorName} left a note on a memory`;
     case 'comment_reel':
-      return `${n.actorName} commented on a Clip`;
+      return n.targetIsMine
+        ? `${n.actorName} commented on your Clip`
+        : `${n.actorName} left a note on a Clip`;
   }
 }
 
 /** Where clicking it should take you — the exact item, never a list page. */
 function linkFor(n: AppNotification): string {
-  if (!n.photoId) return n.mediaKind === 'video' ? '/reels' : '/gallery';
+  const notes = n.commentId ? '&notes=1' : '';
+  if (n.type === 'recreate') return `/recreate?item=${n.photoId}`;
   if (n.mediaKind === 'video' || n.type === 'reel' || n.type === 'comment_reel') {
-    return `/reels?clip=${n.photoId}${n.commentId ? '&notes=1' : ''}`;
+    return `/reels?clip=${n.photoId}${notes}`;
   }
-  return `/gallery?photo=${n.photoId}${n.commentId ? '&notes=1' : ''}`;
+  return `/gallery?photo=${n.photoId}${notes}`;
 }
 
 export default function NotificationBell() {
@@ -54,6 +66,9 @@ export default function NotificationBell() {
   const [loading, setLoading] = useState(false);
   const [, startMutation] = useTransition();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  // Read inside the realtime callback so opening the panel does not tear down
+  // and rebuild the subscription.
+  const openRef = useRef(false);
 
   const refresh = useCallback(async () => {
     const r = await listNotificationsAction(20, 0);
@@ -62,10 +77,26 @@ export default function NotificationBell() {
     setAvailable(r.available);
   }, []);
 
-  // The badge count on mount. Cheap: a HEAD count, no photos, no videos.
+  /**
+   * Just the number. The bell sits in the navbar, so this runs on every page
+   * load and must stay one HEAD count — no roster, no photo rows, no signed
+   * thumbnail URLs. Those are only worth fetching once you open the panel.
+   */
+  const refreshCount = useCallback(async () => {
+    const r = await getUnreadCountAction();
+    setUnread(r.unread);
+    setAvailable(r.available);
+  }, []);
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refreshCount();
+  }, [refreshCount]);
+
+  // Keeps the ref above in step with the state, wherever the panel is closed
+  // from — the button, a click outside, Escape, or following a link.
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   // Realtime is for instant delivery only; the table remains the truth, so a
   // dropped connection just means you see it on the next load.
@@ -76,7 +107,9 @@ export default function NotificationBell() {
       channel = supabase
         .channel('notifications-inbox')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
-          void refresh();
+          // While the panel is shut, a new arrival only needs to move the
+          // badge. The list itself is refetched when you open it.
+          void (openRef.current ? refresh() : refreshCount());
         })
         .subscribe();
     } catch {
@@ -89,7 +122,7 @@ export default function NotificationBell() {
         /* ignore */
       }
     };
-  }, [refresh]);
+  }, [refresh, refreshCount]);
 
   // Close when clicking outside or pressing Escape.
   useEffect(() => {
