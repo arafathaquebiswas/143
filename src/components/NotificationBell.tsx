@@ -204,7 +204,23 @@ export default function NotificationBell() {
       {open && (
         <div
           ref={panelRef}
-          className="card absolute right-0 top-12 z-40 w-[min(22rem,calc(100vw-2rem))] overflow-hidden p-0 shadow-float"
+          /*
+           * absolute! is deliberate. The .card utility in globals.css sets
+           * position: relative and is declared outside any @layer, so it beats
+           * Tailwind's layered `absolute` utility. Without the override the
+           * panel joins the normal flow, the 40px bell wrapper grows to ~451px,
+           * and the sticky header's centred row shoves the bell — and the top
+           * of the panel — clean off the top of the screen.
+           */
+          /*
+           * max-sm anchors to the viewport instead of the bell. right-0 pins
+           * the panel to the bell's right edge, but the theme toggle sits to
+           * the bell's right, so on a 375px screen that anchor is at x=309
+           * while the width formula assumes the full viewport — putting the
+           * left edge at -34. Below sm the panel spans the viewport inset by
+           * 1rem instead, which is the same visual width it always had.
+           */
+          className="card absolute! right-0 top-12 z-40 w-[min(22rem,calc(100vw-2rem))] overflow-hidden p-0 shadow-float max-sm:fixed! max-sm:inset-x-4 max-sm:top-[4.5rem] max-sm:w-auto"
         >
           <div className="flex items-center gap-3 border-b border-line px-4 py-3">
             <p className="display text-base">Notifications</p>
@@ -230,7 +246,12 @@ export default function NotificationBell() {
             </button>
           </div>
 
-          <div className="max-h-[22rem] overflow-y-auto">
+          {/*
+            * 22rem as before on any normal screen. The clamp only engages when
+            * the viewport is genuinely shorter than ~31rem — a phone held in
+            * landscape — where the old fixed height ran off the bottom.
+            */}
+          <div className="max-h-[min(22rem,calc(100dvh-9rem))] overflow-y-auto">
             {!available ? (
               <p className="px-4 py-8 text-center text-sm leading-relaxed text-muted">
                 Notifications are not set up yet.
